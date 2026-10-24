@@ -15,9 +15,9 @@
 - Unity **6000.3.26f1**（Unity Hubで同じバージョンを用意）
 - Universal Render Pipeline **17.3.0**
 - Git LFSが必要です。クローン後に `git lfs install` と `git lfs pull` を実行してください。
-- ビルド対象シーン: `Assets/Scenes/honban.unity`。`test.unity` は検証用シーンです。
+- ビルド対象シーン: `Assets/Scenes/Main.unity`。`Sandbox.unity` はCube・Planeを使った描画検証用シーンです。
 - リポジトリ名は `under-the-sea`、製品表示名は `Under the Sea` です。
 
 Unity Hubからこのフォルダーを開き、パッケージ解決とコンパイルの完了を待ちます。IDE用の `.slnx` / `.csproj` は各環境で生成します。Unity Cloudの既存プロジェクト名やプラットフォーム識別子は、表示名変更に合わせて変更していません。
 
-エージェント操作のセットアップと確認方法は [Unity連携手順](docs/unity-agent-setup.md)、作業規約は [AGENTS.md](AGENTS.md) を参照してください。
+エージェント操作のセットアップと確認方法は [Unity連携手順](docs/unity-agent-setup.md)、[命名規約](docs/naming-conventions.md)、作業規約は [AGENTS.md](AGENTS.md) を参照してください。

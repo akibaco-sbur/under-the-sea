@@ -75,14 +75,16 @@ Pipelineとその依存関係は `Packages/manifest.json` / `packages-lock.json`
 - CLIの自己更新確認とPipelineのレジストリ照会で上記バージョンが最新であることを確認。
 - `codex plugin list` で公式プラグインが `installed, enabled`。この実行中セッションでは取得した公式スキルを直接読んで使用。新しいセッションでの自動ロードは別途確認が必要。
 - Pipeline導入時に実際のEditorがコンパイルし、その後 `ready`。`pipeline list` でlocalhostへの到達を確認し、`editor status` / `script eval` の実行に成功。
-- `unity recompile` は `up_to_date`、診断はエラー0・警告0。
-- アクティブな `honban.unity` の21オブジェクトにMissing Scriptは0。ビルドシーンのGUIDとAssetDatabaseのGUIDが一致し、自作MonoBehaviour 2型を解決できた。シーン・Prefab・`.meta`・シリアライズ済みフィールドの変更なし。
-- `honban.unity` でPlay Modeを実行。`job wait` のフレーム変化条件が成立（5929 → 5947）。別時点でも3595フレーム／20.906秒 → 6045フレーム／35.170秒へ進行。
-- 魚 `isidai_ver2` のAnimator状態時間が変化し、魚のSkinnedMeshRenderer `body`（252頂点）の比較では556座標成分が変化。水中光のcookie offsetも `(7.87, -7.87)` → `(-15.32, 15.32)` と変化。
-- 開始前のConsoleを `Logs/pre-play-console.json` に退避してクリア。Play中の新規エラー0・警告0を、キャプチャバッファとEditor Consoleの両方で確認。約143秒まで動作を観測し、Playを終了、Run In Backgroundの一時上書きを解除。シーンは未変更・未保存。
+- 以下は[命名整理](naming-conventions.md)後の再検証結果。以前の `honban` での検証とは別に実施。
+- `unity recompile` は `completed`、`compilationFailed: false`、エラー0・警告0。
+- 移動24件のGUIDを再照合して不一致0。`Main.unity` の21オブジェクトと `Sandbox.unity` の5オブジェクトにMissing Scriptは0。Preview Sceneで確認し、ユーザーのアクティブシーンを切り替えていない。ビルド設定のMainのパス・GUIDは一致。
+- 全シリアライズGUIDを広く照合すると未解決11件あり。`DefaultVolumeProfile.asset` の旧Volume型4件と `DesktopRenderer.asset` の描画デバッグ用7件で、いずれも改名前の同一アセットに同じGUIDが存在した。今回の移動による参照断裂は見つかっていないが、既存の未解決参照は別途整理が必要。
+- `Main.unity` でPlay Modeを実行。`job wait` のフレーム変化条件が成立（2401 → 2417）。別時点でも2575フレーム／18.062秒 → 9369フレーム／65.465秒へ進行。
+- 魚のAnimator状態時間が0.461→0.946へ変化し、SkinnedMeshRenderer `body`（252頂点）の比較では554座標成分が変化。水中光のcookie offsetも `(12.248, -12.248)` → `(14.902, -14.902)` と変化。
+- 開始前のConsoleを `Logs/main-pre-play-console.json` に退避してクリア。Play中の新規エラー0・警告0を、バッファとEditor Consoleの両方で確認（`Logs/main-play-errors.json`）。Playを終了し、Run In Backgroundの一時上書きを解除。アクティブシーンはMainで未保存変更なし。
 - Game ViewのPNGを2枚目視し、魚・岩・海底が描画され、時間による光の変化を確認。上部のCubeはユーザー確認済みの仮オブジェクトとして維持。
-- gh 2.95.0は添付非対応のため、公式gh 2.103.0をSHA-256検証して一時利用。元リポジトリは読み取り権限のため直接添付できず、fork側の[証跡Issue](https://github.com/shogo0x2e/under-the-sea/issues/1)へ `gh issue create --attach` でアップロードし、同じ画像をDraft PR本文に表示。
-- [Game View 約21秒](https://github.com/user-attachments/assets/3d08bcee-9642-484d-996a-3d1cf9a51bd0) / [約35秒](https://github.com/user-attachments/assets/171791e2-dfc2-4eeb-9c33-6056696bdf39)。デスクトップやEditor周辺UIは含まない。
+- gh 2.95.0は添付非対応のため、公式gh 2.103.0をSHA-256検証して一時利用。元リポジトリは読み取り権限のため直接添付できず、fork側の[証跡コメント](https://github.com/shogo0x2e/under-the-sea/issues/1#issuecomment-6383198818)へ `gh issue comment --attach` でアップロードし、同じ画像をDraft PR本文に表示。
+- 改名後Mainの[Game View 約18秒](https://github.com/user-attachments/assets/fd7cb8ff-7eb3-4ed2-ad0c-7e139f6dd0e5) / [約65秒](https://github.com/user-attachments/assets/a152d06c-b163-46f3-b87a-614f8b4d437a)。デスクトップやEditor周辺UIは含まない。
 - えさやり、Kinect実機、FPV130投影、プレイヤービルドは今回未検証。
 
 ## 公式資料
