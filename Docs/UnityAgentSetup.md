@@ -75,16 +75,16 @@ Pipelineとその依存関係は `Packages/manifest.json` / `packages-lock.json`
 - CLIの自己更新確認とPipelineのレジストリ照会で上記バージョンが最新であることを確認。
 - `codex plugin list` で公式プラグインが `installed, enabled`。この実行中セッションでは取得した公式スキルを直接読んで使用。新しいセッションでの自動ロードは別途確認が必要。
 - Pipeline導入時に実際のEditorがコンパイルし、その後 `ready`。`pipeline list` でlocalhostへの到達を確認し、`editor status` / `script eval` の実行に成功。
-- 以下は[命名整理](NamingConventions.md)後の再検証結果。以前の `honban` での検証とは別に実施。
-- `unity recompile` は `completed`、`compilationFailed: false`、エラー0・警告0。
+- 以下は[命名整理](NamingConventions.md)および[描画参照の整理](RenderingReferences.md)後の再検証結果。古いパスや修復前の証跡とは別に実施。
+- Unityの `RequestScriptCompilation(CleanBuildCache)` を要求し、`unity recompile` は `completed`、`compilationFailed: false`、エラー0・警告0。
 - 移動24件のGUIDを再照合して不一致0。`Main.unity` の21オブジェクトと `Sandbox.unity` の5オブジェクトにMissing Scriptは0。Preview Sceneで確認し、ユーザーのアクティブシーンを切り替えていない。ビルド設定のMainのパス・GUIDは一致。
-- 全シリアライズGUIDを広く照合すると未解決11件あり。`DefaultVolumeProfile.asset` の旧Volume型4件と `DesktopRenderer.asset` の描画デバッグ用7件で、いずれも改名前の同一アセットに同じGUIDが存在した。今回の移動による参照断裂は見つかっていないが、既存の未解決参照は別途整理が必要。
-- `Main.unity` でPlay Modeを実行。`job wait` のフレーム変化条件が成立（2401 → 2417）。別時点でも2575フレーム／18.062秒 → 9369フレーム／65.465秒へ進行。
-- 魚のAnimator状態時間が0.461→0.946へ変化し、SkinnedMeshRenderer `body`（252頂点）の比較では554座標成分が変化。水中光のcookie offsetも `(12.248, -12.248)` → `(14.902, -14.902)` と変化。
-- 開始前のConsoleを `Logs/main-pre-play-console.json` に退避してクリア。Play中の新規エラー0・警告0を、バッファとEditor Consoleの両方で確認（`Logs/main-play-errors.json`）。Playを終了し、Run In Backgroundの一時上書きを解除。アクティブシーンはMainで未保存変更なし。
+- 未解決GUID11件は0件へ解消。旧Volume型4件と、GUIDゼロのEditorテスト型5件を公式APIで除去し、欠損型サブアセット9→0。旧APV参照7件は廃止フィールドをクリアし、現行Graphics Settingsの9リソースが実アセットに解決することを確認。有効Volume設定20件、Renderer Featuresの値とアセットGUIDは変更前後一致。
+- 修復後の `Main.unity` でPlay Modeを実行。`job wait` のフレーム変化条件が成立（3723 → 3743）。別時点でも3926フレーム／22.945秒 → 10399フレーム／60.823秒へ進行。
+- 魚のAnimator状態時間が0.142→0.330へ変化し、SkinnedMeshRenderer `body`（252頂点）の比較では591座標成分が変化。水中光のcookie offsetも `(4.086, -4.086)` → `(15.646, -15.646)` と変化。
+- 開始前のConsoleを `Logs/guid-repair-pre-play-console.json` に退避してクリア。Play中の新規エラー0・警告0を、バッファとEditor Consoleの両方で確認（`Logs/guid-repair-play-errors.json`）。Playを終了し、Run In Backgroundの一時上書きを解除。アクティブシーンはMainで未保存変更なし。
 - Game ViewのPNGを2枚目視し、魚・岩・海底が描画され、時間による光の変化を確認。上部のCubeはユーザー確認済みの仮オブジェクトとして維持。
-- gh 2.95.0は添付非対応のため、公式gh 2.103.0をSHA-256検証して一時利用。元リポジトリは読み取り権限のため直接添付できず、fork側の[証跡コメント](https://github.com/shogo0x2e/under-the-sea/issues/1#issuecomment-6383198818)へ `gh issue comment --attach` でアップロードし、同じ画像をDraft PR本文に表示。
-- 改名後Mainの[Game View 約18秒](https://github.com/user-attachments/assets/fd7cb8ff-7eb3-4ed2-ad0c-7e139f6dd0e5) / [約65秒](https://github.com/user-attachments/assets/a152d06c-b163-46f3-b87a-614f8b4d437a)。デスクトップやEditor周辺UIは含まない。
+- gh 2.95.0は添付非対応のため、公式gh 2.103.0をSHA-256検証して一時利用。元リポジトリは読み取り権限のため直接添付できず、fork側の[証跡コメント](https://github.com/shogo0x2e/under-the-sea/issues/1#issuecomment-6383372182)へ `gh issue comment --attach` でアップロードし、同じ画像をDraft PR本文に表示。
+- 描画参照修復後Mainの[Game View 約23秒](https://github.com/user-attachments/assets/b4ae9e1e-28e8-4f84-872f-4122be4bbc01) / [約61秒](https://github.com/user-attachments/assets/6be54ea2-a256-4fef-bda1-76f7e1dfd7d4)。前回のGame Viewとも比較し、魚・岩・海底・水中光を維持。デスクトップやEditor周辺UIは含まない。
 - えさやり、Kinect実機、FPV130投影、プレイヤービルドは今回未検証。
 - ローカルのPlayerSettings保存名を `Under the Sea` に統一し、保存・UnityデシリアライズAPIによる再読み込み後も同じ値であることを確認。Cloud ID・組織ID・連携設定は変更なし。Cloud側の照会はCLI未サインイン（`NOT_SIGNED_IN`）のため未確認。詳細は[ローカル保存名とCloud表示名](NamingConventions.md#ローカル保存名とcloud表示名)を参照。
 
