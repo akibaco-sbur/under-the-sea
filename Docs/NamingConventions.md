@@ -15,7 +15,7 @@ C#のprivateフィールド、引数、ローカル変数はcamelCaseです。�
 | 公開メンバー | `TargetCamera`, `UpdateFishColor` |
 | privateフィールド等 | `targetCamera`, `baseOffset`, `deltaTime` |
 
-`README.md`、`docs`、パッケージの `manifest.json` 等、一般的な文書・ツール規約は機械的に改名しません。リポジトリ名は `under-the-sea`、製品表示名は `Under the Sea`、UWPパッケージ名は `UnderTheSea` です。
+通常の文書も `Docs/NamingConventions.md`、`Docs/UnityAgentSetup.md` のようにPascalCaseにします。`README.md`、`AGENTS.md`、`.vscode`、パッケージの `manifest.json` 等、ツールが指定する綴りは維持します。リポジトリ名は `under-the-sea`、製品表示名は `Under the Sea`、UWPパッケージ名は `UnderTheSea` です。
 
 ## 互換性のための例外
 
@@ -58,8 +58,12 @@ C#のprivateフィールド、引数、ローカル変数はcamelCaseです。�
 
 テクスチャの旧ファイル名は上表に出典追跡のため残しています。ビルド設定はGUIDから新しいシーンパスへ解決し直しています。新規の `Shaders` フォルダにはUnityが生成した `.meta` を含めます。
 
-## 残存する旧Cloud名
+## ローカル保存名とCloud表示名
 
-`ProjectSettings/ProjectSettings.asset` の `projectName: Test_2026_shiba` は既存Cloud連携由来のメタデータです。既存のCloudプロジェクトID・組織IDが記録されていますが、現在のEditor APIが返すCloud名は空で、サーバー上の実名をこの検証では確認できていません。ローカルだけで別のCloud名を捏造せず、ID・連携状態とともに保持しています。Cloud側の改名を行う場合は、対象アカウントとプロジェクトを確認して別途実施します。
+`ProjectSettings/ProjectSettings.asset` に保存する `projectName` は `Under the Sea` です。Unity 6000.3.26f1のPlayerSettingsを `SerializedObject` で取得し、このプロパティだけを更新して保存しました。保存したファイルをUnityの `InternalEditorUtility.LoadSerializedFileAndForget` で読み直し、名前の永続化とCloudプロジェクトID・組織ID・連携設定の同一性を確認しています。これはローカル保存名の変更であり、Cloudサーバー上の改名ではありません。
+
+[公式CloudProjectSettingsのソース](https://github.com/Unity-Technologies/UnityCsReference/blob/6000.3/Editor/Mono/UnityConnect/CloudProjectSettings.cs)では、`projectName` はUnityConnectから現在のCloud名を取得する読み取り専用APIです。この環境では同APIの名前は空、`projectBound` はfalseでした。保存済みIDを削除したり、再バインドしたりしていません。
+
+Cloud側は `unity auth status` と `unity cloud project list` がともに `NOT_SIGNED_IN` となり、実名・権限を照会できませんでした。CLIの `cloud project` には一覧・既定対象の選択機能がありますが、表示名更新コマンドはありません。Cloud側の変更が必要なら、対象組織にアクセスできるアカウントでサインインし、保存済みIDの既存プロジェクトを確認します。[公式の改名手順](https://docs.unity.com/en-us/cloud/projects/edit-project)はUnity DashboardのSettings → Project Details → 名前のEdit → Saveで、OwnerまたはManager権限が必要です。プロジェクトIDは改名対象ではありません。認証できていないCloud実名がローカル名と一致するとは扱いません。
 
 ローカルに無視対象の旧名 `.slnx` やLibraryキャッシュが残る場合があります。これらは公開追跡対象ではありません。
