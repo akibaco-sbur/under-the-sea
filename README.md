@@ -12,14 +12,16 @@
 
 現在の起動シーンでは、海底・岩・魚の描画、魚のアニメーション、水中光の動きを確認できます。
 
-`Sandbox.unity` ではAzure KinectのDepth入力から骨格を表示できます。RGB映像は使用しません。[SDKのセットアップと操作方法](Docs/AzureKinectSandbox.md)を参照してください。骨格入力とえさやり体験の接続は未実装です。
+`Sandbox.unity` は、仮の魚18匹が餌の位置へ集まり、周囲を泳ぐデモです。クリックで餌を移動し、Fキーで表示を切り替えられます。個体ごとの速度・旋回・尾の動きと、餌がないときの遊泳を確認できます。[魚デモの操作と調整](Docs/FishFeedingSandbox.md)を参照してください。
+
+同じシーンの `AzureKinectDemo` を有効にすると、Azure KinectのDepth入力から骨格を表示できます。RGB映像は使用しません。[SDKのセットアップと切替手順](Docs/AzureKinectSandbox.md)を参照してください。既定の魚デモはKinectを起動しません。魚の色変化・餌の消費・身体入力との接続は未実装です。
 
 ## 開発
 
 - Unity **6000.3.26f1**（Unity Hubで同じバージョンを用意）
 - Universal Render Pipeline **17.3.0**
 - Git LFSが必要です。クローン後に `git lfs install` と `git lfs pull` を実行してください。
-- ビルド対象シーン: `Assets/Scenes/Main.unity`。`Sandbox.unity` はAzure Kinect骨格の検証用で、従来の描画サンプルは `RenderingSamples` 以下に非アクティブで保持しています。
+- ビルド対象シーン: `Assets/Scenes/Main.unity`。`Sandbox.unity` は魚の遊泳とAzure Kinect骨格の検証用です。既定では `FishFeedingDemo` のみ有効で、骨格デモと従来の `RenderingSamples` は非アクティブで保持しています。
 - リポジトリ名は `under-the-sea`、製品表示名は `Under the Sea` です。
 
 Unity Hubからこのフォルダーを開き、パッケージ解決とコンパイルの完了を待ちます。`Main.unity` を開いてPlayすると、現在の海中シーンを実行できます。IDE用の `.slnx` / `.csproj` は各環境で生成します。

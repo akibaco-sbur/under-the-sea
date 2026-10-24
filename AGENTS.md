@@ -11,7 +11,7 @@
 - アセットの移動・改名には `AssetDatabase.MoveAsset` 等を使い、`.meta` とGUIDを保持する。シーン、Prefab、ビルド設定、文字列のパス参照を確認する。
 - MonoBehaviourのクラス名とファイル名を一致させる。シリアライズ済みフィールドを改名するなら `FormerlySerializedAs` 等で移行する。命名目的だけの大規模リファクタリングはしない。
 - フォルダ・シーン・自作アセット・C#の型とファイル・公開メンバー、文書のフォルダ名・ファイル名はPascalCase。privateフィールド・引数・ローカル変数はcamelCase。詳細と互換性上の例外は `Docs/NamingConventions.md` に従う。
-- 起動・ビルド対象は `Assets/Scenes/Main.unity`、骨格入力・描画実験は `Assets/Scenes/Sandbox.unity`。スクリプトは `Assets/Scripts` に配置する。Kinectの依存関係と実機操作は `Docs/AzureKinectSandbox.md` に従う。
+- 起動・ビルド対象は `Assets/Scenes/Main.unity`、魚の遊泳・骨格入力・描画実験は `Assets/Scenes/Sandbox.unity`。スクリプトは `Assets/Scripts` に配置する。魚デモは `Docs/FishFeedingSandbox.md`、Kinectの依存関係と実機操作は `Docs/AzureKinectSandbox.md` に従う。既定の魚デモでは `AzureKinectDemo` を非アクティブに保つ。
 - 公開リポジトリのファイル、PR本文・コメントにはNotionの内部資料リンクを置かない。作品コンセプトは公開用の文章で記載する。
 - スクリプト／パッケージ変更後は実際のUnityコンパイルを行う。接続不能・Safe Mode・タイムアウトはコンパイル成功扱いにしない。必要に応じて関連するテストやシーン参照の検証を加える。
 - `Library`、`Temp`、ログ、IDE生成物、認証情報、マシン固有のエージェント設定をコミットしない。成果報告では実行済みの検証と未確認事項を分ける。

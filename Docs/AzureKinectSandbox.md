@@ -1,6 +1,6 @@
 # Azure Kinect Sandbox
 
-`Assets/Scenes/Sandbox.unity` でAzure Kinect DKの骨格を表示します。Mainとビルドシーンの指定は変更しません。従来のSandboxの描画オブジェクトは `RenderingSamples` 配下で非アクティブにしています。
+`Assets/Scenes/Sandbox.unity` の `AzureKinectDemo` でAzure Kinect DKの骨格を表示します。既定では[魚デモ](FishFeedingSandbox.md)が有効で、骨格デモは非アクティブです。Mainとビルドシーンの指定は変更しません。従来のSandboxの描画オブジェクトは `RenderingSamples` 配下で非アクティブにしています。
 
 ## セットアップ
 
@@ -18,7 +18,7 @@
 
 ## 起動と表示
 
-1. 他のKinect Viewerを終了し、Sandboxを開いてPlayします。
+1. 他のKinect Viewerを終了し、Sandboxを開きます。Edit Modeで `FishFeedingDemo` を非アクティブ、`AzureKinectDemo` をアクティブにしてからPlayします。各グループ内に専用Cameraがあるため、同時に有効にしないでください。元の骨格用Cameraの位置・投影設定は保持しています。
 2. 初回のBody Tracker作成には数秒かかります。HUDに現在の状態・理由、Depth取得数、骨格フレーム数、人数、センサー時刻、破棄数を表示します。
 3. センサー前方1〜4mに立ち、腕や身体を動かします。同じBody IDを同じ色・同じ表示オブジェクトに対応付けます。
 4. Stopはカメラ／Trackerを停止し、骨格を消します。Start / Retryで再開します。デバイスが開けない場合は理由を表示し、5秒間隔で再試行します。SDK未配置・デバイス未接続でもEditorのフレームは継続します。
