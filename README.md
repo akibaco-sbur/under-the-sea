@@ -18,6 +18,6 @@
 - ビルド対象シーン: `Assets/Scenes/Main.unity`。`Sandbox.unity` はCube・Planeを使った描画検証用シーンです。
 - リポジトリ名は `under-the-sea`、製品表示名は `Under the Sea` です。
 
-Unity Hubからこのフォルダーを開き、パッケージ解決とコンパイルの完了を待ちます。IDE用の `.slnx` / `.csproj` は各環境で生成します。Unity Cloudの既存プロジェクト名やプラットフォーム識別子は、表示名変更に合わせて変更していません。
+Unity Hubからこのフォルダーを開き、パッケージ解決とコンパイルの完了を待ちます。IDE用の `.slnx` / `.csproj` は各環境で生成します。Unity Cloud由来の連携名・プロジェクトID・組織IDと既存アプリケーションIDは保持し、UWPのパッケージ名と説明は新名称へ統一しています。
 
 エージェント操作のセットアップと確認方法は [Unity連携手順](docs/unity-agent-setup.md)、[命名規約](docs/naming-conventions.md)、作業規約は [AGENTS.md](AGENTS.md) を参照してください。
