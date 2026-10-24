@@ -77,7 +77,13 @@ Pipelineとその依存関係は `Packages/manifest.json` / `packages-lock.json`
 - Pipeline導入時に実際のEditorがコンパイルし、その後 `ready`。`pipeline list` でlocalhostへの到達を確認し、`editor status` / `script eval` の実行に成功。
 - `unity recompile` は `up_to_date`、診断はエラー0・警告0。
 - アクティブな `honban.unity` の21オブジェクトにMissing Scriptは0。ビルドシーンのGUIDとAssetDatabaseのGUIDが一致し、自作MonoBehaviour 2型を解決できた。シーン・Prefab・`.meta`・シリアライズ済みフィールドの変更なし。
-- えさやり、Kinect実機、FPV130投影、プレイヤービルド、Play Modeでの動作は今回未検証。
+- `honban.unity` でPlay Modeを実行。`job wait` のフレーム変化条件が成立（5929 → 5947）。別時点でも3595フレーム／20.906秒 → 6045フレーム／35.170秒へ進行。
+- 魚 `isidai_ver2` のAnimator状態時間が変化し、魚のSkinnedMeshRenderer `body`（252頂点）の比較では556座標成分が変化。水中光のcookie offsetも `(7.87, -7.87)` → `(-15.32, 15.32)` と変化。
+- 開始前のConsoleを `Logs/pre-play-console.json` に退避してクリア。Play中の新規エラー0・警告0を、キャプチャバッファとEditor Consoleの両方で確認。約143秒まで動作を観測し、Playを終了、Run In Backgroundの一時上書きを解除。シーンは未変更・未保存。
+- Game ViewのPNGを2枚目視し、魚・岩・海底が描画され、時間による光の変化を確認。上部のCubeはユーザー確認済みの仮オブジェクトとして維持。
+- gh 2.95.0は添付非対応のため、公式gh 2.103.0をSHA-256検証して一時利用。元リポジトリは読み取り権限のため直接添付できず、fork側の[証跡Issue](https://github.com/shogo0x2e/under-the-sea/issues/1)へ `gh issue create --attach` でアップロードし、同じ画像をDraft PR本文に表示。
+- [Game View 約21秒](https://github.com/user-attachments/assets/3d08bcee-9642-484d-996a-3d1cf9a51bd0) / [約35秒](https://github.com/user-attachments/assets/171791e2-dfc2-4eeb-9c33-6056696bdf39)。デスクトップやEditor周辺UIは含まない。
+- えさやり、Kinect実機、FPV130投影、プレイヤービルドは今回未検証。
 
 ## 公式資料
 
