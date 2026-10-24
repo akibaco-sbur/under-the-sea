@@ -12,7 +12,7 @@
   ./Tools/SetupAzureKinect.ps1
   ```
 
-  Microsoft公式NuGetからSensor 1.4.1 / Body Tracking 1.1.2 / ONNX Runtime 1.10.0を取得し、SHA-256を検証して `.Local/AzureKinect/Runtime` にDLLとLiteモデルを配置します。Microsoft公式Unityサンプルと同じ互換バージョンの組み合わせです。グローバルSDKインストールやUnityパッケージ追加は必要ありません。ダウンロードには数百MBの空き容量が必要です。
+  Microsoft公式NuGetからSensor 1.4.1 / Body Tracking 1.1.2 / ONNX Runtime 1.10.0を取得し、SHA-256を検証して `.Local/AzureKinect/Runtime` にDLLとLiteモデルを配置します。Microsoft公式Unityサンプルと同じ互換バージョンの組み合わせです。グローバルSDKインストールやUnityパッケージ追加は必要ありません。
 
   `.Local` はGit無視対象です。SDK、ONNXモデル、ログ、計測した関節データはコミットしません。別のチェックアウトでもセットアップを実行してください。
 
@@ -38,7 +38,7 @@ Tracker作成にはキャンセルAPIがありません。初期化中の手動S
 ## 実機検証（2026-10-24）
 
 - 接続Azure Kinect DK、RTX 4070 Laptop環境でDirectMLを使用。Depthフレーム、骨格フレーム、センサー時刻が更新し、人物1人を検出しました。
-- 同じBody IDの右手首座標が変化し、両時点でMedium以上として表示。腕の動きと骨格表示を確認しました。個別の関節座標ログはローカルに保持しています。ユーザーが公開を許可した[骨格画像3枚](https://github.com/shogo0x2e/under-the-sea/issues/1#issuecomment-6383645834)にはRGB人物映像を含みません。
+- 同じBody IDの右手首座標が変化し、両時点でMedium以上として表示。腕の動きと骨格表示を確認しました。
 - 手動停止で人数・表示が0になり、初期化中Stop、初期化中OnDisable→再有効化、停止後再Playでも入力が再開しました。再有効化後にはDepth 472、骨格465フレーム・人物1人を取得。
 - SDK未配置パスでは理由を表示してワーカー終了。物理USBの抜き差し、複数人、CPUバックエンド、Standaloneビルドは未検証です。
 - 新規ワークツリーの初回PlayでUnity Searchの初期化例外が発生しました。公式ソースで、Play中は未作成の既定インデックスを作れないことを確認。Edit Modeで既定インデックスを準備してからConsoleをクリアし、再Playでは新規Error 0・Warning 0でした。ローカルのUserSettingsキャッシュだけの準備で、検索無効化や回避コードは加えていません。
