@@ -65,6 +65,5 @@
     "explorer.fileNesting.enabled": true,
     "explorer.fileNesting.patterns": {
         "*.sln": "*.csproj"
-    },
-    "dotnet.defaultSolution": "Test_2026_shiba.slnx"
+    }
 }
