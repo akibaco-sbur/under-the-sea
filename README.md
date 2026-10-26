@@ -12,12 +12,14 @@
 
 現在の起動シーンでは、海底・岩・魚の描画、魚のアニメーション、水中光の動きを確認できます。
 
+`Sandbox.unity` ではAzure KinectのDepth入力から骨格を表示できます。RGB映像は使用しません。[SDKのセットアップと操作方法](Docs/AzureKinectSandbox.md)を参照してください。骨格入力とえさやり体験の接続は未実装です。
+
 ## 開発
 
 - Unity **6000.3.26f1**（Unity Hubで同じバージョンを用意）
 - Universal Render Pipeline **17.3.0**
 - Git LFSが必要です。クローン後に `git lfs install` と `git lfs pull` を実行してください。
-- ビルド対象シーン: `Assets/Scenes/Main.unity`。`Sandbox.unity` はCube・Planeを使った描画検証用シーンです。
+- ビルド対象シーン: `Assets/Scenes/Main.unity`。`Sandbox.unity` はAzure Kinect骨格の検証用で、従来の描画サンプルは `RenderingSamples` 以下に非アクティブで保持しています。
 - リポジトリ名は `under-the-sea`、製品表示名は `Under the Sea` です。
 
 Unity Hubからこのフォルダーを開き、パッケージ解決とコンパイルの完了を待ちます。`Main.unity` を開いてPlayすると、現在の海中シーンを実行できます。IDE用の `.slnx` / `.csproj` は各環境で生成します。
