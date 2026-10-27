@@ -13,9 +13,6 @@
 .utmp/
 /.Local/
 /Assets/.Local/
-# Licensed hand asset is imported locally from the user's Asset Store copy.
-/Assets/ThirdParty/SimpleHands/
-/Assets/ThirdParty/SimpleHands.meta
 __pycache__/
 *.pyc
 /[Ll]ibrary/

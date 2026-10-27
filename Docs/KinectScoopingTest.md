@@ -32,9 +32,8 @@
 
 ## 手のアセット
 
-[Stylized - Simple Hands (221297)](https://assetstore.unity.com/packages/3d/characters/stylized-simple-hands-221297) のユーザー所有のローカルコピーを使用しています。
-`Assets/ThirdParty/SimpleHands/` はGitの追跡対象外で、モデル・テクスチャの原本はこのリポジトリに含めません。
-別環境ではAsset Storeから取得して同じフォルダへインポートしてください。既存の `.meta` とGUIDを保ってください。
+[Stylized - Simple Hands (221297)](https://assetstore.unity.com/packages/3d/characters/stylized-simple-hands-221297) を `Assets/ThirdParty/SimpleHands/` に同梱しています。モデル・テクスチャ・Prefabと既存の `.meta` を追跡し、シーンが参照するGUIDを維持しています。
+モデル・テクスチャ・付属PDFはGit LFSで管理しています。clone後に `git lfs pull` を実行して実体を取得してください。Asset Storeからの別途インポートは不要です。
 
 WhiteHandの手首がモデル原点です。表示スケールを0.165、ローカルZ回転を180度にし、指ボーンを少し曲げて掌を上へ向けています。回転は左右反転とは別です。左右を複製する場合の鏡映は、この向きではモデルのローカルX軸が候補になりますが、左手の動作・描画は今回未検証です。
 アセットのAnimatorはこのテストでは使用せず、シーン内のモデルから外しています。
