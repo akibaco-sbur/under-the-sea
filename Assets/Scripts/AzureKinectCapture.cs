@@ -19,6 +19,7 @@ internal sealed class AzureKinectCapture
         public long ReceivedTicks;
         public long FrameNumber;
         public AzureKinectHandDepth.Image DepthImage;
+        public string RgbInputStatus;
     }
 
     private readonly object gate = new object();
@@ -110,7 +111,6 @@ internal sealed class AzureKinectCapture
                 rgbWorker = new MediaPipeHandWorker(Path.GetFullPath(Path.Combine(directory, "../../..")));
                 rgbWorker.Start();
             }
-            long lastRgbSubmit = 0;
             while (!stopping)
             {
                 // Drain completed frames first. At most two inputs are ever in flight.
@@ -132,12 +132,15 @@ internal sealed class AzureKinectCapture
                         }
                         var depthImage = handDepth?.Measure(frame, ref calibration, bodies);
                         long receivedTicks = Stopwatch.GetTimestamp();
-                        if (colorFrame != null && bodies.Length > 0 && (receivedTicks - lastRgbSubmit) / (double)Stopwatch.Frequency >= 0.1)
+                        // The sensor is already limited to 15 FPS. A 100 ms gate
+                        // skipped alternate frames and hurt rotating-hand tracking.
+                        // Submit every body frame; the worker keeps only the latest pending input.
+                        if (colorFrame != null && bodies.Length > 0)
                         {
                             var rgb = colorFrame.Read(frame, ref calibration, bodies[0], receivedTicks);
-                            if (rgb != null) { rgbWorker.Submit(rgb); lastRgbSubmit = receivedTicks; }
+                            if (rgb != null) rgbWorker.Submit(rgb);
                         }
-                        var snapshot = new Snapshot { DepthImage = depthImage, Bodies = bodies, TimestampMicroseconds = AzureKinectNative.k4abt_frame_get_device_timestamp_usec(frame), ReceivedTicks = receivedTicks, FrameNumber = Interlocked.Increment(ref results) };
+                        var snapshot = new Snapshot { DepthImage = depthImage, Bodies = bodies, TimestampMicroseconds = AzureKinectNative.k4abt_frame_get_device_timestamp_usec(frame), ReceivedTicks = receivedTicks, FrameNumber = Interlocked.Increment(ref results), RgbInputStatus = bodies.Length > 0 ? colorFrame?.Status : "No body for RGB target" };
                         lock (gate) latest = snapshot;
                         SetStatus(count == 0 ? "Depth live — no person detected. Stand 1–4 m in front of the sensor." : "Live skeleton tracking");
                     }

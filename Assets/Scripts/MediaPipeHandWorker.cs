@@ -12,6 +12,8 @@ internal sealed class MediaPipeHandWorker : IDisposable
         internal int Width, Height;
         internal uint BodyId;
         internal float TargetX, TargetY;
+        internal int TargetJoint;
+        internal float OtherWristX, OtherWristY;
         internal long CapturedTicks;
         internal byte[] Pixels; // RGBA, top row first
     }
@@ -22,6 +24,14 @@ internal sealed class MediaPipeHandWorker : IDisposable
         public string label;
         public float score, distance;
         public float[] landmarks;
+        // Lowercase fields match the Python JSON protocol, not serialized assets.
+        public bool geometryValid, fist;
+        public int curledFingers, requiredCurledFingers;
+        public float[] straightness, palmBendDegrees;
+        public float maxCurvedRatio, maxBentRatio, minPalmBendDegrees;
+        public string source, reason, fullReason;
+        public int handCount;
+        public float nearestDistance;
         [NonSerialized] internal Frame Frame;
         [NonSerialized] internal byte[] Preview; // RGBA, bottom row first
     }
@@ -85,7 +95,8 @@ internal sealed class MediaPipeHandWorker : IDisposable
                     if (frame == null) continue;
                     uint id = ++sequence;
                     output.Write(id); output.Write(frame.Width); output.Write(frame.Height); output.Write(frame.Pixels.Length);
-                    output.Write(frame.TargetX); output.Write(frame.TargetY); output.Write(frame.Pixels);
+                    output.Write(frame.TargetX); output.Write(frame.TargetY); output.Write(frame.TargetJoint);
+                    output.Write(frame.OtherWristX); output.Write(frame.OtherWristY); output.Write(frame.Pixels);
                     output.Flush();
                     string line = child.StandardOutput.ReadLine();
                     if (line == null) throw new IOException("RGB worker stopped unexpectedly.");
@@ -119,6 +130,8 @@ internal sealed class MediaPipeHandWorker : IDisposable
         int rowBytes = frame.Width * 4;
         for (int y = 0; y < frame.Height; y++)
             Buffer.BlockCopy(frame.Pixels, y * rowBytes, pixels, (frame.Height - 1 - y) * rowBytes, rowBytes);
+        MarkTarget(pixels, frame, frame.TargetX, frame.TargetY, 255, 155, 30);
+        MarkTarget(pixels, frame, frame.OtherWristX, frame.OtherWristY, 235, 70, 220);
         if (points == null) return pixels;
         for (int i = 0; i + 1 < points.Length; i += 2)
         {
@@ -132,6 +145,21 @@ internal sealed class MediaPipeHandWorker : IDisposable
             }
         }
         return pixels;
+    }
+    private static void MarkTarget(byte[] pixels, Frame frame, float x, float y, byte red, byte green, byte blue)
+    {
+        if (!float.IsFinite(x) || !float.IsFinite(y) || x < 0 || y < 0 || x >= 1 || y >= 1) return;
+        int cx = (int)(x * frame.Width), cy = frame.Height - 1 - (int)(y * frame.Height);
+        for (int delta = -12; delta <= 12; delta++) for (int thickness = -1; thickness <= 1; thickness++)
+        {
+            for (int axis = 0; axis < 2; axis++)
+            {
+                int px = cx + (axis == 0 ? delta : thickness), py = cy + (axis == 0 ? thickness : delta);
+                if (px < 0 || py < 0 || px >= frame.Width || py >= frame.Height) continue;
+                int p = (py * frame.Width + px) * 4;
+                pixels[p] = red; pixels[p + 1] = green; pixels[p + 2] = blue; pixels[p + 3] = 255;
+            }
+        }
     }
     public void Dispose()
     {

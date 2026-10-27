@@ -69,56 +69,57 @@ public sealed class KinectHandTest : MonoBehaviour
         var rgb = skeleton.LatestRgb;
         bool rgbFresh = rgb?.Frame != null && rgb.Frame.BodyId == body.Id &&
             (System.Diagnostics.Stopwatch.GetTimestamp() - rgb.Frame.CapturedTicks) / (double)System.Diagnostics.Stopwatch.Frequency < 0.75;
-        bool rgbConfident = rgbFresh && rgb.score >= 0.65f;
-        bool isOpen = rgbConfident && rgb.label == "Open_Palm";
-        bool isClosed = rgbConfident && rgb.label == "Closed_Fist";
-        statusText.text = skeleton.TrackingStatus + "  |  " + skeleton.RgbStatus + "  |  Local processing";
-        if (!isOpen && !isClosed)
+        bool shapeValid = rgbFresh && rgb.geometryValid;
+        bool isClosed = shapeValid && rgb.fist;
+        statusText.text = skeleton.TrackingStatus + "  |  " + skeleton.RgbStatus + "\n" + snapshot.RgbInputStatus;
+        if (!shapeValid)
         {
-            stateText.text = "UNKNOWN";
+            stateText.text = "UNKNOWN\nFREE";
             indicator.color = new Color(0.35f, 0.4f, 0.43f);
         }
         else
         {
-            stateText.text = isOpen ? "OPEN / FREE" : "CLOSED / GRAB";
-            indicator.color = isOpen ? new Color(0.75f, 0.76f, 0.77f) : new Color(0.2f, 0.9f, 0.3f);
+            stateText.text = isClosed ? "CLOSED / GRAB" : "NOT FIST\nFREE";
+            indicator.color = isClosed ? new Color(0.2f, 0.9f, 0.3f) : new Color(0.75f, 0.76f, 0.77f);
         }
-        ShowMetrics(valid, now, depthPose, rgbFresh ? rgb : null);
+        ShowMetrics(valid, depthPose, rgbFresh ? rgb : null);
         UpdateZoom(snapshot.DepthImage, body.RightHandRegion);
         ShowRgb(rgbFresh ? rgb : null);
     }
 
-    private void ShowMetrics(bool valid, float now, HandGestureEstimator.Pose depthPose, MediaPipeHandWorker.Result rgb)
+    private void ShowMetrics(bool valid, HandGestureEstimator.Pose depthPose, MediaPipeHandWorker.Result rgb)
     {
         var r = body.RightHandRegion;
-        string reason;
-        if (!valid) reason = "No valid hand region";
-        else if (gesture.Current == HandGestureEstimator.Pose.Unknown) reason = "Establishing open baseline";
-        else if (moving) reason = "Moving: state is held";
-        else if (gesture.Candidate != gesture.Current) reason = $"Candidate {gesture.Candidate}: {Mathf.Min((float)gesture.CandidateSeconds(now), 0.2f):F2} / 0.20 s";
-        else reason = "Current state retained";
-        metricsText.text = $"RGB HAND RECOGNITION\n" +
-            $"Gesture          {(rgb != null ? rgb.label : "--")}\n" +
-            $"Score              {(rgb != null ? rgb.score.ToString("P0") : "--")}  (min 65%)\n" +
-            $"Hand match  {(rgb != null && rgb.distance >= 0 ? rgb.distance.ToString("F3") : "--")}\n\n" +
-            $"DEPTH COMPARISON\n" +
-            $"Depth state    {depthPose}\n" +
-            $"Weighted area     {(valid ? body.RightHandArea.ToString("F1") : "--")}\n" +
-            $"Filtered area         {(valid ? gesture.FilteredArea.ToString("F1") : "--")}\n" +
-            $"Open baseline      {(valid ? gesture.OpenArea.ToString("F1") : "--")}\n" +
-            $"Area ratio               {(valid ? (gesture.Ratio * 100f).ToString("F1") + "%" : "--")}\n\n" +
-            $"Grab threshold       < {HandGestureEstimator.GrabThreshold * 100:F0}%\n" +
-            $"Release threshold   > {HandGestureEstimator.ReleaseThreshold * 100:F0}%\n" +
-            $"Hand depth            {(r != null ? (r.HandDepth / 1000f).ToString("F2") + " m" : "--")}\n" +
-            $"Selected pixels      {(r != null ? r.SelectedCount.ToString() : "--")}\n" +
-            $"Tip-side pixels        {(r != null ? r.TipCount.ToString() : "--")}\n" +
-            $"Hand speed            {speed:F2} m/s\n\n" + reason;
+        bool measured = rgb != null && rgb.geometryValid;
+        string reason = !measured ? (rgb == null ? "RGB missing / stale" : rgb.reason) :
+            rgb.fist ? "All four fingers curled" : "Four-finger closure not met";
+        metricsText.text = "3D FINGER SHAPE\n" +
+            $"Curled fingers   {(measured ? rgb.curledFingers.ToString() : "--")} / 4\n" +
+            "Finger     Chord ratio / Bend\n" +
+            FingerMetric("Index", 0, rgb) + FingerMetric("Middle", 1, rgb) +
+            FingerMetric("Ring", 2, rgb) + FingerMetric("Little", 3, rgb) +
+            (rgb != null ? $"Each: ratio <= {rgb.maxCurvedRatio:F2}\nOR <= {rgb.maxBentRatio:F2} + bend >= {rgb.minPalmBendDegrees:F0} deg\n" : "Each: --\n") +
+            reason + $"\nSource {(rgb != null ? rgb.source : "--")}, hands {(rgb != null ? rgb.handCount.ToString() : "--")}\n" +
+            $"Hand match  {(rgb != null && rgb.distance >= 0 ? rgb.distance.ToString("F3") : "--")} / 0.20\n\n" +
+            "OLD CATEGORY (comparison)\n" +
+            $"{(rgb != null ? rgb.label : "--")}  {(rgb != null ? rgb.score.ToString("P0") : "--")}\n\n" +
+            "DEPTH (comparison only)\n" +
+            $"State {depthPose}, ratio {(valid ? gesture.Ratio.ToString("P0") : "--")}\n" +
+            $"Area {(valid ? body.RightHandArea.ToString("F1") : "--")}, pixels {(r != null ? r.SelectedCount.ToString() : "--")}\n" +
+            $"Hand {(r != null ? (r.HandDepth / 1000f).ToString("F2") : "--")} m, speed {speed:F2} m/s";
+    }
+
+    private static string FingerMetric(string name, int index, MediaPipeHandWorker.Result rgb)
+    {
+        if (rgb == null || !rgb.geometryValid || rgb.straightness == null || rgb.palmBendDegrees == null ||
+            rgb.straightness.Length <= index || rgb.palmBendDegrees.Length <= index) return name + "   -- / --\n";
+        return $"{name}   {rgb.straightness[index]:F2} / {rgb.palmBendDegrees[index]:F0} deg\n";
     }
 
     private void ShowUnavailable()
     {
         statusText.text = (skeleton != null ? skeleton.TrackingStatus + "  |  " + skeleton.RgbStatus : "No Kinect component");
-        stateText.text = "UNKNOWN";
+        stateText.text = "UNKNOWN\nFREE";
         indicator.color = new Color(0.35f, 0.4f, 0.43f);
         metricsText.text = "DECISION METRICS\n\nWaiting for a tracked right hand.";
         zoomLabel.text = "HAND DEPTH / NO HAND";
@@ -175,7 +176,7 @@ public sealed class KinectHandTest : MonoBehaviour
         var root = canvasObject.GetComponent<RectTransform>();
         Panel(root, "Background", Vector2.zero, Vector2.one, new Color(0.035f, 0.045f, 0.055f));
         Text(root, "Title", "KINECT HAND TEST", new Vector2(0.02f, 0.91f), new Vector2(0.8f, 0.99f), 40, FontStyles.Bold);
-        statusText = Text(root, "Status", "Starting...", new Vector2(0.02f, 0.86f), new Vector2(0.98f, 0.91f), 20);
+        statusText = Text(root, "Status", "Starting...", new Vector2(0.02f, 0.85f), new Vector2(0.98f, 0.91f), 18);
         Panel(root, "DepthPanel", new Vector2(0.02f, 0.04f), new Vector2(0.46f, 0.85f), new Color(0.08f, 0.10f, 0.12f));
         Text(root, "DepthLabel", "DEPTH VIEW", new Vector2(0.03f, 0.79f), new Vector2(0.44f, 0.84f), 22, FontStyles.Bold);
         depthView = Raw(root, "Depth", new Vector2(0.03f, 0.08f), new Vector2(0.45f, 0.78f));
@@ -184,7 +185,7 @@ public sealed class KinectHandTest : MonoBehaviour
         zoomView = Raw(root, "Zoom", new Vector2(0.48f, 0.59f), new Vector2(0.66f, 0.77f));
         Text(root, "RgbLabel", "RGB / HAND POINTS", new Vector2(0.48f, 0.52f), new Vector2(0.66f, 0.58f), 19, FontStyles.Bold);
         rgbView = Raw(root, "Rgb", new Vector2(0.48f, 0.30f), new Vector2(0.66f, 0.51f));
-        Text(root, "ZoomKey", "Cyan: depth pixels\nRGB: matched points", new Vector2(0.48f, 0.19f), new Vector2(0.66f, 0.28f), 18);
+        Text(root, "ZoomKey", "RGB: cyan hand points\nOrange: right target\nMagenta: other wrist\nThumb is not tested", new Vector2(0.48f, 0.15f), new Vector2(0.66f, 0.28f), 16);
         Panel(root, "StatePanel", new Vector2(0.68f, 0.04f), new Vector2(0.98f, 0.85f), new Color(0.08f, 0.10f, 0.12f));
         Text(root, "StateLabel", "HAND STATE", new Vector2(0.70f, 0.79f), new Vector2(0.96f, 0.84f), 22, FontStyles.Bold);
         indicator = Raw(root, "Indicator", new Vector2(0.71f, 0.66f), new Vector2(0.78f, 0.78f));
