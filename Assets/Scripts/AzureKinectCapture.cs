@@ -9,6 +9,8 @@ internal sealed class AzureKinectCapture
     {
         public uint Id;
         public AzureKinectNative.Joint[] Joints;
+        public float RightHandArea;
+        public AzureKinectHandDepth.Region RightHandRegion;
     }
     internal sealed class Snapshot
     {
@@ -16,11 +18,13 @@ internal sealed class AzureKinectCapture
         public ulong TimestampMicroseconds;
         public long ReceivedTicks;
         public long FrameNumber;
+        public AzureKinectHandDepth.Image DepthImage;
     }
 
     private readonly object gate = new object();
     private readonly string directory;
     private readonly int processingMode;
+    private readonly bool estimateHandShape;
     private Thread thread;
     private volatile bool stopping;
     private IntPtr tracker;
@@ -29,8 +33,8 @@ internal sealed class AzureKinectCapture
     private string status = "Stopped";
     private long captures, results, dropped;
 
-    internal AzureKinectCapture(string directory, int processingMode)
-    { this.directory = directory; this.processingMode = processingMode; }
+    internal AzureKinectCapture(string directory, int processingMode, bool estimateHandShape = false)
+    { this.directory = directory; this.processingMode = processingMode; this.estimateHandShape = estimateHandShape; }
     internal bool IsAlive => thread != null && thread.IsAlive;
     internal string Status { get { lock (gate) return status; } }
     internal Snapshot Latest { get { lock (gate) return latest; } }
@@ -90,6 +94,7 @@ internal sealed class AzureKinectCapture
             finally { System.Runtime.InteropServices.Marshal.FreeHGlobal(model); }
             lock (gate) { tracker = created; shutdown = false; }
             int pending = 0;
+            var handDepth = estimateHandShape ? new AzureKinectHandDepth() : null;
             while (!stopping)
             {
                 // Drain completed frames first. At most two inputs are ever in flight.
@@ -109,7 +114,8 @@ internal sealed class AzureKinectCapture
                                 throw new InvalidOperationException("Cannot read body skeleton.");
                             bodies[b] = new Body { Id = AzureKinectNative.k4abt_frame_get_body_id(frame, b), Joints = skeleton.Joints };
                         }
-                        var snapshot = new Snapshot { Bodies = bodies, TimestampMicroseconds = AzureKinectNative.k4abt_frame_get_device_timestamp_usec(frame), ReceivedTicks = Stopwatch.GetTimestamp(), FrameNumber = Interlocked.Increment(ref results) };
+                        var depthImage = handDepth?.Measure(frame, ref calibration, bodies);
+                        var snapshot = new Snapshot { DepthImage = depthImage, Bodies = bodies, TimestampMicroseconds = AzureKinectNative.k4abt_frame_get_device_timestamp_usec(frame), ReceivedTicks = Stopwatch.GetTimestamp(), FrameNumber = Interlocked.Increment(ref results) };
                         lock (gate) latest = snapshot;
                         SetStatus(count == 0 ? "Depth live — no person detected. Stand 1–4 m in front of the sensor." : "Live skeleton tracking");
                     }
