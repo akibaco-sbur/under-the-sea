@@ -30,6 +30,7 @@ internal sealed class AzureKinectCapture
     private IntPtr tracker;
     private bool shutdown;
     private Snapshot latest;
+    private MediaPipeHandWorker rgbWorker;
     private string status = "Stopped";
     private long captures, results, dropped;
 
@@ -38,6 +39,8 @@ internal sealed class AzureKinectCapture
     internal bool IsAlive => thread != null && thread.IsAlive;
     internal string Status { get { lock (gate) return status; } }
     internal Snapshot Latest { get { lock (gate) return latest; } }
+    internal MediaPipeHandWorker.Result LatestRgb => rgbWorker?.Latest;
+    internal string RgbStatus => rgbWorker?.Status ?? "RGB recognition stopped";
     internal long Captures => Interlocked.Read(ref captures);
     internal long Results => Interlocked.Read(ref results);
     internal long Dropped => Interlocked.Read(ref dropped);
@@ -76,11 +79,17 @@ internal sealed class AzureKinectCapture
                 throw new InvalidOperationException("No Azure Kinect detected. Check USB 3 and external power.");
             if (AzureKinectNative.k4a_device_open(0, out device) != 0)
                 throw new InvalidOperationException("Cannot open Kinect. Close other viewers using the device.");
-            var config = new AzureKinectNative.DeviceConfiguration { DepthMode = 2, CameraFps = 1 };
-            // NFOV unbinned / 15 FPS / color OFF / standalone / LED enabled.
+            var config = new AzureKinectNative.DeviceConfiguration
+            {
+                DepthMode = 2, CameraFps = 1,
+                ColorFormat = estimateHandShape ? 3 : 0,
+                ColorResolution = estimateHandShape ? 1 : 0,
+                SynchronizedImagesOnly = estimateHandShape
+            };
+            // NFOV unbinned / 15 FPS. RGB is enabled only in the hand diagnostic.
             if (AzureKinectNative.k4a_device_start_cameras(device, ref config) != 0)
                 throw new InvalidOperationException("Cannot start depth camera. Check USB bandwidth and power.");
-            if (AzureKinectNative.k4a_device_get_calibration(device, config.DepthMode, 0, out var calibration) != 0)
+            if (AzureKinectNative.k4a_device_get_calibration(device, config.DepthMode, config.ColorResolution, out var calibration) != 0)
                 throw new InvalidOperationException("Depth calibration unavailable.");
             SetStatus("Creating body tracker (first start can take several seconds)");
             IntPtr model = System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi(Path.Combine(directory, "dnn_model_2_0_lite_op11.onnx"));
@@ -95,6 +104,13 @@ internal sealed class AzureKinectCapture
             lock (gate) { tracker = created; shutdown = false; }
             int pending = 0;
             var handDepth = estimateHandShape ? new AzureKinectHandDepth() : null;
+            var colorFrame = estimateHandShape ? new AzureKinectColorFrame() : null;
+            if (estimateHandShape)
+            {
+                rgbWorker = new MediaPipeHandWorker(Path.GetFullPath(Path.Combine(directory, "../../..")));
+                rgbWorker.Start();
+            }
+            long lastRgbSubmit = 0;
             while (!stopping)
             {
                 // Drain completed frames first. At most two inputs are ever in flight.
@@ -115,7 +131,13 @@ internal sealed class AzureKinectCapture
                             bodies[b] = new Body { Id = AzureKinectNative.k4abt_frame_get_body_id(frame, b), Joints = skeleton.Joints };
                         }
                         var depthImage = handDepth?.Measure(frame, ref calibration, bodies);
-                        var snapshot = new Snapshot { DepthImage = depthImage, Bodies = bodies, TimestampMicroseconds = AzureKinectNative.k4abt_frame_get_device_timestamp_usec(frame), ReceivedTicks = Stopwatch.GetTimestamp(), FrameNumber = Interlocked.Increment(ref results) };
+                        long receivedTicks = Stopwatch.GetTimestamp();
+                        if (colorFrame != null && bodies.Length > 0 && (receivedTicks - lastRgbSubmit) / (double)Stopwatch.Frequency >= 0.1)
+                        {
+                            var rgb = colorFrame.Read(frame, ref calibration, bodies[0], receivedTicks);
+                            if (rgb != null) { rgbWorker.Submit(rgb); lastRgbSubmit = receivedTicks; }
+                        }
+                        var snapshot = new Snapshot { DepthImage = depthImage, Bodies = bodies, TimestampMicroseconds = AzureKinectNative.k4abt_frame_get_device_timestamp_usec(frame), ReceivedTicks = receivedTicks, FrameNumber = Interlocked.Increment(ref results) };
                         lock (gate) latest = snapshot;
                         SetStatus(count == 0 ? "Depth live — no person detected. Stand 1–4 m in front of the sensor." : "Live skeleton tracking");
                     }
@@ -140,6 +162,8 @@ internal sealed class AzureKinectCapture
         catch (Exception exception) { SetStatus(exception.Message); }
         finally
         {
+            rgbWorker?.Dispose();
+            rgbWorker = null;
             lock (gate)
             {
                 latest = null;

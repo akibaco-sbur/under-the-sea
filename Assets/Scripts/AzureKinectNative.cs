@@ -80,6 +80,7 @@ internal static class AzureKinectNative
     [DllImport("k4a", CallingConvention = Convention)] internal static extern int k4a_device_get_capture(IntPtr device, out IntPtr capture, int timeoutMs);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern void k4a_capture_release(IntPtr capture);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern IntPtr k4a_capture_get_depth_image(IntPtr capture);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern IntPtr k4a_capture_get_color_image(IntPtr capture);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern IntPtr k4a_image_get_buffer(IntPtr image);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern UIntPtr k4a_image_get_size(IntPtr image);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern int k4a_image_get_width_pixels(IntPtr image);

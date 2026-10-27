@@ -2,14 +2,14 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-/// <summary>Depth-only right hand recognition diagnostic, independent of feeding.</summary>
+/// <summary>RGB and depth right hand recognition diagnostic, independent of feeding.</summary>
 public sealed class KinectHandTest : MonoBehaviour
 {
     [SerializeField] private AzureKinectSkeletonView skeleton;
     private readonly HandGestureEstimator gesture = new HandGestureEstimator();
-    private UnityEngine.UI.RawImage depthView, zoomView, indicator;
+    private UnityEngine.UI.RawImage depthView, zoomView, rgbView, indicator;
     private TextMeshProUGUI stateText, metricsText, statusText, zoomLabel;
-    private Texture2D depthTexture, ballTexture;
+    private Texture2D depthTexture, rgbTexture, ballTexture;
     private TMP_FontAsset font;
     private long lastFrame = -1;
     private uint bodyId;
@@ -65,23 +65,30 @@ public sealed class KinectHandTest : MonoBehaviour
         previousPosition = position; previousTime = now;
         moving = speed > 0.35f;
         bool valid = body.RightHandRegion != null && body.RightHandArea > 0;
-        var pose = gesture.Push(body.RightHandArea, now, moving);
-        statusText.text = skeleton.TrackingStatus + "  |  RGB OFF  |  cyan = measured pixels";
-        if (!valid || pose == HandGestureEstimator.Pose.Unknown)
+        var depthPose = gesture.Push(body.RightHandArea, now, moving);
+        var rgb = skeleton.LatestRgb;
+        bool rgbFresh = rgb?.Frame != null && rgb.Frame.BodyId == body.Id &&
+            (System.Diagnostics.Stopwatch.GetTimestamp() - rgb.Frame.CapturedTicks) / (double)System.Diagnostics.Stopwatch.Frequency < 0.75;
+        bool rgbConfident = rgbFresh && rgb.score >= 0.65f;
+        bool isOpen = rgbConfident && rgb.label == "Open_Palm";
+        bool isClosed = rgbConfident && rgb.label == "Closed_Fist";
+        statusText.text = skeleton.TrackingStatus + "  |  " + skeleton.RgbStatus + "  |  Local processing";
+        if (!isOpen && !isClosed)
         {
             stateText.text = "UNKNOWN";
             indicator.color = new Color(0.35f, 0.4f, 0.43f);
         }
         else
         {
-            stateText.text = pose == HandGestureEstimator.Pose.Open ? "OPEN / FREE" : "CLOSED / GRAB";
-            indicator.color = pose == HandGestureEstimator.Pose.Open ? new Color(0.75f, 0.76f, 0.77f) : new Color(0.2f, 0.9f, 0.3f);
+            stateText.text = isOpen ? "OPEN / FREE" : "CLOSED / GRAB";
+            indicator.color = isOpen ? new Color(0.75f, 0.76f, 0.77f) : new Color(0.2f, 0.9f, 0.3f);
         }
-        ShowMetrics(valid, now);
+        ShowMetrics(valid, now, depthPose, rgbFresh ? rgb : null);
         UpdateZoom(snapshot.DepthImage, body.RightHandRegion);
+        ShowRgb(rgbFresh ? rgb : null);
     }
 
-    private void ShowMetrics(bool valid, float now)
+    private void ShowMetrics(bool valid, float now, HandGestureEstimator.Pose depthPose, MediaPipeHandWorker.Result rgb)
     {
         var r = body.RightHandRegion;
         string reason;
@@ -90,7 +97,12 @@ public sealed class KinectHandTest : MonoBehaviour
         else if (moving) reason = "Moving: state is held";
         else if (gesture.Candidate != gesture.Current) reason = $"Candidate {gesture.Candidate}: {Mathf.Min((float)gesture.CandidateSeconds(now), 0.2f):F2} / 0.20 s";
         else reason = "Current state retained";
-        metricsText.text = $"DECISION METRICS\n\n" +
+        metricsText.text = $"RGB HAND RECOGNITION\n" +
+            $"Gesture          {(rgb != null ? rgb.label : "--")}\n" +
+            $"Score              {(rgb != null ? rgb.score.ToString("P0") : "--")}  (min 65%)\n" +
+            $"Hand match  {(rgb != null && rgb.distance >= 0 ? rgb.distance.ToString("F3") : "--")}\n\n" +
+            $"DEPTH COMPARISON\n" +
+            $"Depth state    {depthPose}\n" +
             $"Weighted area     {(valid ? body.RightHandArea.ToString("F1") : "--")}\n" +
             $"Filtered area         {(valid ? gesture.FilteredArea.ToString("F1") : "--")}\n" +
             $"Open baseline      {(valid ? gesture.OpenArea.ToString("F1") : "--")}\n" +
@@ -105,13 +117,29 @@ public sealed class KinectHandTest : MonoBehaviour
 
     private void ShowUnavailable()
     {
-        statusText.text = (skeleton != null ? skeleton.TrackingStatus : "No Kinect component") + "  |  RGB OFF";
+        statusText.text = (skeleton != null ? skeleton.TrackingStatus + "  |  " + skeleton.RgbStatus : "No Kinect component");
         stateText.text = "UNKNOWN";
         indicator.color = new Color(0.35f, 0.4f, 0.43f);
         metricsText.text = "DECISION METRICS\n\nWaiting for a tracked right hand.";
         zoomLabel.text = "HAND DEPTH / NO HAND";
         zoomView.texture = null; zoomView.enabled = false;
+        rgbView.texture = null; rgbView.enabled = false;
         if (skeleton == null || skeleton.LatestSnapshot == null) depthView.texture = null;
+    }
+
+    private void ShowRgb(MediaPipeHandWorker.Result result)
+    {
+        if (result?.Frame == null || result.Preview == null)
+        { rgbView.enabled = false; return; }
+        var frame = result.Frame;
+        if (rgbTexture == null || rgbTexture.width != frame.Width || rgbTexture.height != frame.Height)
+        {
+            if (rgbTexture != null) Destroy(rgbTexture);
+            rgbTexture = new Texture2D(frame.Width, frame.Height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        }
+        rgbTexture.LoadRawTextureData(result.Preview);
+        rgbTexture.Apply(false);
+        rgbView.texture = rgbTexture; rgbView.uvRect = new Rect(0, 0, 1, 1); rgbView.enabled = true;
     }
 
     private void ShowDepth(AzureKinectHandDepth.Image image)
@@ -153,14 +181,16 @@ public sealed class KinectHandTest : MonoBehaviour
         depthView = Raw(root, "Depth", new Vector2(0.03f, 0.08f), new Vector2(0.45f, 0.78f));
         Panel(root, "ZoomPanel", new Vector2(0.47f, 0.04f), new Vector2(0.67f, 0.85f), new Color(0.08f, 0.10f, 0.12f));
         zoomLabel = Text(root, "ZoomLabel", "HAND DEPTH / ZOOM", new Vector2(0.48f, 0.79f), new Vector2(0.66f, 0.84f), 20, FontStyles.Bold);
-        zoomView = Raw(root, "Zoom", new Vector2(0.48f, 0.45f), new Vector2(0.66f, 0.77f));
-        Text(root, "ZoomKey", "Cyan: pixels used\nin the area score", new Vector2(0.48f, 0.32f), new Vector2(0.66f, 0.43f), 19);
+        zoomView = Raw(root, "Zoom", new Vector2(0.48f, 0.59f), new Vector2(0.66f, 0.77f));
+        Text(root, "RgbLabel", "RGB / HAND POINTS", new Vector2(0.48f, 0.52f), new Vector2(0.66f, 0.58f), 19, FontStyles.Bold);
+        rgbView = Raw(root, "Rgb", new Vector2(0.48f, 0.30f), new Vector2(0.66f, 0.51f));
+        Text(root, "ZoomKey", "Cyan: depth pixels\nRGB: matched points", new Vector2(0.48f, 0.19f), new Vector2(0.66f, 0.28f), 18);
         Panel(root, "StatePanel", new Vector2(0.68f, 0.04f), new Vector2(0.98f, 0.85f), new Color(0.08f, 0.10f, 0.12f));
         Text(root, "StateLabel", "HAND STATE", new Vector2(0.70f, 0.79f), new Vector2(0.96f, 0.84f), 22, FontStyles.Bold);
         indicator = Raw(root, "Indicator", new Vector2(0.71f, 0.66f), new Vector2(0.78f, 0.78f));
         ballTexture = MakeBall(); indicator.texture = ballTexture;
         stateText = Text(root, "State", "UNKNOWN", new Vector2(0.79f, 0.66f), new Vector2(0.96f, 0.78f), 27, FontStyles.Bold);
-        metricsText = Text(root, "Metrics", "Waiting...", new Vector2(0.70f, 0.07f), new Vector2(0.96f, 0.64f), 22);
+        metricsText = Text(root, "Metrics", "Waiting...", new Vector2(0.70f, 0.05f), new Vector2(0.96f, 0.64f), 19);
         ShowUnavailable();
     }
     private static RectTransform Place(GameObject go, Transform parent, Vector2 min, Vector2 max)
@@ -204,6 +234,7 @@ public sealed class KinectHandTest : MonoBehaviour
     private void OnDestroy()
     {
         if (depthTexture != null) Destroy(depthTexture);
+        if (rgbTexture != null) Destroy(rgbTexture);
         if (ballTexture != null) Destroy(ballTexture);
 
     }
