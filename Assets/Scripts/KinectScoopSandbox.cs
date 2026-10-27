@@ -17,6 +17,8 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     private bool hasPose;
     private float swimTime;
     private int meals;
+    private Renderer bowlRim;
+    private MaterialPropertyBlock rimProperties;
 
     // Only for deterministic Editor checks. Live input is always the default.
     public bool DiagnosticInput { get; set; }
@@ -28,6 +30,8 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     private void Start()
     {
         interaction.Configure(handCenter, food, bowl, diverCamera);
+        bowlRim = bowl.Find("Rim")?.GetComponent<Renderer>();
+        rimProperties = new MaterialPropertyBlock();
         swimmingCenters = new Vector3[fish.Length];
         for (int i = 0; i < fish.Length; i++) swimmingCenters[i] = fish[i].position;
         runtimeFont = TMP_FontAsset.CreateFontAsset("Yu Gothic", "Regular", 64);
@@ -68,6 +72,12 @@ public sealed class KinectScoopSandbox : MonoBehaviour
         DrawArm();
         interaction.Tick(lastHand, tracked, dt);
         Swim(dt);
+        if (bowlRim != null)
+        {
+            bool ready = tracked && (interaction.IsTouchingFood || interaction.State == ScoopFeedingState.Armed);
+            rimProperties.SetColor("_BaseColor", ready ? new Color(0.20f, 1f, 0.35f) : new Color(0.41f, 0.83f, 0.80f));
+            bowlRim.SetPropertyBlock(rimProperties);
+        }
         guide.text = interaction.Guide;
         if (!tracked) status.text = hasPose ? "追跡を待っています • 餌はそのまま" : "Kinectの前で右腕を動かしてください";
         else if (DiagnosticInput) status.text = "動作確認用の入力";
@@ -75,9 +85,11 @@ public sealed class KinectScoopSandbox : MonoBehaviour
         progressFill.fillAmount = interaction.OfferProgress;
         progressFill.enabled = interaction.OfferProgress > 0f;
         progressFill.rectTransform.localScale = new Vector3(interaction.OfferProgress, 1f, 1f);
-        progressText.text = interaction.State == ScoopFeedingState.Held
+        progressText.text = !tracked ? "追跡が戻ると操作できます" : interaction.State == ScoopFeedingState.Held
             ? $"差し出す  {interaction.OfferProgress * 100f:0}%"
-            : interaction.State == ScoopFeedingState.Offered ? "どうぞ" : $"食べた回数  {meals}";
+            : interaction.State == ScoopFeedingState.Offered ? "どうぞ"
+            : interaction.State == ScoopFeedingState.Armed ? $"持ち上げる  {interaction.LiftProgress * 100f:0}%"
+            : interaction.PickupHint;
     }
 
     private void DrawArm()

@@ -68,8 +68,12 @@ public static class ScoopSandboxBuilder
         Primitive("Dish", bowl, PrimitiveType.Cylinder, new Vector3(0f, -0.035f, 0f), new Vector3(0.37f, 0.025f, 0.37f), tray);
         Ring("Rim", bowl, 0.183f, 0.012f, rim);
         var food = Primitive("Food", root.transform, PrimitiveType.Cube, bowl.position + new Vector3(0f, 0.028f, 0f), Vector3.one * 0.055f, feed);
+        food.gameObject.AddComponent<BoxCollider>().isTrigger = true;
 
         var handCenter = Child("RightHandCenter", root.transform).transform;
+        var palmContact = handCenter.gameObject.AddComponent<SphereCollider>();
+        palmContact.radius = 0.065f;
+        palmContact.isTrigger = true;
         var handWrist = Child("RightHandWrist", root.transform).transform;
         var hand = (GameObject)PrefabUtility.InstantiatePrefab(handPrefab, scene);
         PrefabUtility.UnpackPrefabInstance(hand, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);

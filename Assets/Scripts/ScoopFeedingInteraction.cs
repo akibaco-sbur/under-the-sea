@@ -12,23 +12,24 @@ public enum ScoopFeedingState
 public sealed class ScoopFeedingLogic
 {
     private const float PickupRadius = 0.22f;
-    private const float LiftHeight = 0.12f;
-    private const float EntryMinHeight = -0.12f;
-    private const float EntryMaxHeight = 0.10f;
+    private const float LiftHeight = 0.06f;
+    private const float ContactCancelRadius = 0.12f;
+    private const float ContactCancelDrop = 0.12f;
     private const float OfferDistance = 0.25f;
     private const float OfferForward = 0.18f;
     private const float OfferSeconds = 5f;
     private const float ReturnHeight = 0.16f;
 
     private bool trackingPreviously;
-    private bool sawOutside;
     private bool leftBowlWhileHeld;
-    private float entryHeight;
+    private Vector3 contactPosition;
+    private float liftProgress;
     private float offerElapsed;
 
     public ScoopFeedingState State { get; private set; } = ScoopFeedingState.AwaitEntry;
     public bool IsTracking { get; private set; }
     public bool FoodAvailableToFish => IsTracking && State == ScoopFeedingState.Offered;
+    public float LiftProgress => State == ScoopFeedingState.Armed ? liftProgress : 0f;
     public float OfferProgress => State == ScoopFeedingState.Offered ? 1f :
         State == ScoopFeedingState.Held ? Mathf.Clamp01(offerElapsed / OfferSeconds) : 0f;
 
@@ -41,13 +42,13 @@ public sealed class ScoopFeedingLogic
             switch (State)
             {
                 case ScoopFeedingState.Armed:
-                    return "手を上げて餌をすくう";
+                    return "餌に触れました。そのまま持ち上げる";
                 case ScoopFeedingState.Held:
                     return "前へ差し出して5秒待つ";
                 case ScoopFeedingState.Offered:
                     return "魚が食べに来ます";
                 default:
-                    return "皿の外から手を入れる";
+                    return "餌に手を近づける";
             }
         }
     }
@@ -55,15 +56,15 @@ public sealed class ScoopFeedingLogic
     public void Reset()
     {
         State = ScoopFeedingState.AwaitEntry;
-        sawOutside = false;
         leftBowlWhileHeld = false;
-        entryHeight = 0f;
+        contactPosition = Vector3.zero;
+        liftProgress = 0f;
         offerElapsed = 0f;
         trackingPreviously = false;
         IsTracking = false;
     }
 
-    public void Tick(Vector3 handPosition, bool tracking, float dt, Vector3 bowlPosition, Vector3 forward)
+    public void Tick(Vector3 handPosition, bool tracking, float dt, Vector3 bowlPosition, Vector3 forward, bool touchingFood = false)
     {
         if (!tracking || !IsFinite(handPosition) || !IsFinite(bowlPosition))
         {
@@ -78,7 +79,7 @@ public sealed class ScoopFeedingLogic
             if (State == ScoopFeedingState.Armed)
             {
                 State = ScoopFeedingState.AwaitEntry;
-                sawOutside = false;
+                liftProgress = 0f;
             }
             return;
         }
@@ -87,40 +88,53 @@ public sealed class ScoopFeedingLogic
         Vector3 offset = handPosition - bowlPosition;
         Vector3 horizontal = Vector3.ProjectOnPlane(offset, Vector3.up);
         bool inside = horizontal.sqrMagnitude <= PickupRadius * PickupRadius;
-        bool insideEntry = inside && offset.y >= EntryMinHeight && offset.y <= EntryMaxHeight;
 
         if (!trackingPreviously)
         {
             trackingPreviously = true;
-            if (State == ScoopFeedingState.AwaitEntry)
-                sawOutside = !insideEntry;
-            // Reacquisition alone cannot pick up, return, or advance the offer.
+            // Initial contact may arm; reacquisition alone cannot lift or offer.
+            if (State == ScoopFeedingState.AwaitEntry && touchingFood)
+            {
+                contactPosition = handPosition;
+                liftProgress = 0f;
+                State = ScoopFeedingState.Armed;
+            }
             return;
         }
 
         switch (State)
         {
             case ScoopFeedingState.AwaitEntry:
-                if (!insideEntry)
-                    sawOutside = true;
-                else if (sawOutside)
+                if (touchingFood)
                 {
-                    entryHeight = handPosition.y;
+                    contactPosition = handPosition;
+                    liftProgress = 0f;
                     State = ScoopFeedingState.Armed;
                 }
                 break;
 
             case ScoopFeedingState.Armed:
-                if (!inside)
+                // Keep the original horizontal contact point but allow a lower
+                // lift baseline while the hand remains in contact with food.
+                if (touchingFood && handPosition.y < contactPosition.y)
+                    contactPosition.y = handPosition.y;
+                Vector3 movement = handPosition - contactPosition;
+                Vector3 sideways = Vector3.ProjectOnPlane(movement, Vector3.up);
+                if (sideways.sqrMagnitude > ContactCancelRadius * ContactCancelRadius ||
+                    movement.y < -ContactCancelDrop)
                 {
                     State = ScoopFeedingState.AwaitEntry;
-                    sawOutside = true;
+                    liftProgress = 0f;
                 }
-                else if (handPosition.y - entryHeight >= LiftHeight)
+                else
                 {
-                    State = ScoopFeedingState.Held;
-                    leftBowlWhileHeld = false;
-                    offerElapsed = 0f;
+                    liftProgress = Mathf.Clamp01(movement.y / LiftHeight);
+                    if (movement.y >= LiftHeight)
+                    {
+                        State = ScoopFeedingState.Held;
+                        leftBowlWhileHeld = false;
+                        offerElapsed = 0f;
+                    }
                 }
                 break;
 
@@ -181,11 +195,29 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
     private Transform bowl;
     private Camera viewCamera;
     private Vector3 foodHomeLocal;
+    private SphereCollider handCollider;
+    private BoxCollider foodCollider;
 
     public ScoopFeedingState State => logic.State;
     public string Guide => logic.Guide;
     public bool FoodAvailableToFish => logic.FoodAvailableToFish;
     public float OfferProgress => logic.OfferProgress;
+    public float LiftProgress => logic.LiftProgress;
+    public bool IsTouchingFood { get; private set; }
+    public string PickupHint
+    {
+        get
+        {
+            if (hand == null || food == null || IsTouchingFood)
+                return string.Empty;
+            Vector3 delta = food.position - hand.position;
+            Vector3 local = viewCamera != null ? viewCamera.transform.InverseTransformDirection(delta) : delta;
+            float x = Mathf.Abs(local.x), y = Mathf.Abs(local.y), z = Mathf.Abs(local.z);
+            if (z >= x && z >= y) return local.z >= 0f ? "もう少し奥へ" : "もう少し手前へ";
+            if (y >= x) return local.y >= 0f ? "もう少し上へ" : "もう少し下へ";
+            return local.x >= 0f ? "もう少し右へ" : "もう少し左へ";
+        }
+    }
     public Vector3 FoodPosition => food != null ? food.position : Vector3.zero;
 
     public void Configure(Transform hand, Transform food, Transform bowl, Camera camera)
@@ -196,7 +228,32 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
         viewCamera = camera;
         if (food != null && bowl != null)
             foodHomeLocal = bowl.InverseTransformPoint(food.position);
+        handCollider = hand != null ? hand.GetComponent<SphereCollider>() : null;
+        if (hand != null && handCollider == null)
+        {
+            handCollider = hand.gameObject.AddComponent<SphereCollider>();
+            handCollider.center = Vector3.zero;
+            handCollider.radius = 0.065f;
+            handCollider.isTrigger = true;
+        }
+        foodCollider = food != null ? food.GetComponent<BoxCollider>() : null;
+        if (food != null && foodCollider == null)
+        {
+            foodCollider = food.gameObject.AddComponent<BoxCollider>();
+            foodCollider.size = Vector3.one;
+            foodCollider.isTrigger = true;
+        }
+        IsTouchingFood = false;
         logic.Reset();
+    }
+
+    public static bool CheckContact(Collider handCollider, Collider foodCollider)
+    {
+        if (handCollider == null || foodCollider == null || !handCollider.enabled || !foodCollider.enabled ||
+            !handCollider.gameObject.activeInHierarchy || !foodCollider.gameObject.activeInHierarchy)
+            return false;
+        return Physics.ComputePenetration(handCollider, handCollider.transform.position, handCollider.transform.rotation,
+            foodCollider, foodCollider.transform.position, foodCollider.transform.rotation, out _, out _);
     }
 
     public void Tick(Vector3 handPosition, bool tracking, float dt)
@@ -204,9 +261,15 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
         if (bowl == null || food == null)
             return;
         Vector3 forward = viewCamera != null ? viewCamera.transform.forward : Vector3.forward;
-        logic.Tick(handPosition, tracking, dt, bowl.position, forward);
-        if (logic.IsTracking && hand != null)
+        bool validPosition = !float.IsNaN(handPosition.x) && !float.IsInfinity(handPosition.x) &&
+                             !float.IsNaN(handPosition.y) && !float.IsInfinity(handPosition.y) &&
+                             !float.IsNaN(handPosition.z) && !float.IsInfinity(handPosition.z);
+        if (tracking && validPosition && hand != null)
             hand.position = handPosition;
+        IsTouchingFood = tracking && validPosition &&
+                         (logic.State == ScoopFeedingState.AwaitEntry || logic.State == ScoopFeedingState.Armed) &&
+                         CheckContact(handCollider, foodCollider);
+        logic.Tick(handPosition, tracking, dt, bowl.position, forward, IsTouchingFood);
         if (logic.State == ScoopFeedingState.Held || logic.State == ScoopFeedingState.Offered)
         {
             if (logic.IsTracking)
