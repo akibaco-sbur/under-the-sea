@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1001 &193619925
+--- !u!1001 &190358583
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -129,15 +129,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: 1705eb7d1376d604fa49cf3c0bf7ba63, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 2.58
+      value: 1.65
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 1705eb7d1376d604fa49cf3c0bf7ba63, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: 0.12
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 1705eb7d1376d604fa49cf3c0bf7ba63, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -0.09
+      value: 9.69
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 1705eb7d1376d604fa49cf3c0bf7ba63, type: 3}
       propertyPath: m_LocalRotation.w
@@ -181,45 +181,20 @@ PrefabInstance:
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1705eb7d1376d604fa49cf3c0bf7ba63, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 193619928}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1705eb7d1376d604fa49cf3c0bf7ba63, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 193619927}
+      addedObject: {fileID: 190358585}
   m_SourcePrefab: {fileID: 100100000, guid: 1705eb7d1376d604fa49cf3c0bf7ba63, type: 3}
---- !u!1 &193619926 stripped
+--- !u!1 &190358584 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 1705eb7d1376d604fa49cf3c0bf7ba63, type: 3}
-  m_PrefabInstance: {fileID: 193619925}
+  m_PrefabInstance: {fileID: 190358583}
   m_PrefabAsset: {fileID: 0}
---- !u!95 &193619927
-Animator:
-  serializedVersion: 7
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 193619926}
-  m_Enabled: 1
-  m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 9100000, guid: f7831f6ec35084a4da1fc9a837e95f22, type: 2}
-  m_CullingMode: 0
-  m_UpdateMode: 0
-  m_ApplyRootMotion: 0
-  m_LinearVelocityBlending: 0
-  m_StabilizeFeet: 0
-  m_AnimatePhysics: 0
-  m_WarningMessage: 
-  m_HasTransformHierarchy: 1
-  m_AllowConstantClipSamplingOptimization: 1
-  m_KeepAnimatorStateOnDisable: 0
-  m_WriteDefaultValuesOnDisable: 0
---- !u!114 &193619928
+--- !u!114 &190358585
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 193619926}
+  m_GameObject: {fileID: 190358584}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b5f87ab0f2040d846973ffad62b6214a, type: 3}
@@ -231,114 +206,6 @@ MonoBehaviour:
   maxQuadStretch: 1.6
   finMaterialNameContains: 
   finRootBehindBodyMargin: 0.1
---- !u!1001 &253540577
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 0}
-    m_Modifications:
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -4
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: -1.3
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 919132149155446097, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      propertyPath: m_Name
-      value: StripedFish
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 253540579}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 253540581}
-  m_SourcePrefab: {fileID: 100100000, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
---- !u!1 &253540578 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
-  m_PrefabInstance: {fileID: 253540577}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &253540579
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 253540578}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9098cb1e72f9a3b4c8fd311a3884a6fd, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::StripedFishAnimatedQuadBillboard
-  targetCamera: {fileID: 330585545}
-  hideOriginalRenderer: 1
-  flattenQuadsToCamera: 1
-  maxQuadStretch: 1.6
-  finMaterialNameContains: Material
-  finRootBehindBodyMargin: 0.1
---- !u!95 &253540581
-Animator:
-  serializedVersion: 7
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 253540578}
-  m_Enabled: 1
-  m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 9100000, guid: 0f3fd0cbcbe990242b0e3eca7024add8, type: 2}
-  m_CullingMode: 0
-  m_UpdateMode: 0
-  m_ApplyRootMotion: 0
-  m_LinearVelocityBlending: 0
-  m_StabilizeFeet: 0
-  m_AnimatePhysics: 0
-  m_WarningMessage: 
-  m_HasTransformHierarchy: 1
-  m_AllowConstantClipSamplingOptimization: 1
-  m_KeepAnimatorStateOnDisable: 0
-  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -856,6 +723,80 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1952861760
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1952861762}
+  - component: {fileID: 1952861761}
+  m_Layer: 0
+  m_Name: SummonFish
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1952861761
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1952861760}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ceaa648b42f4c14f9e533ccfc28439d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SummonFish
+  species:
+  - speciesName: PufferFish
+    prefab: {fileID: 190358584}
+    initialCount: 10
+    forwardAxis: 1
+    maxSpeed: 3
+    maxAcceleration: 0.8
+    maxAngularVelocity: 70
+    textureAssignments:
+    - rendererPath: 
+      materialIndex: 0
+      texture: {fileID: 2800000, guid: 752ad0ef35fd23b40b8583f5db18d214, type: 3}
+      textureProperty: 
+    behavioursToAdd:
+    - {fileID: 190358585}
+  - speciesName: StripedFish
+    prefab: {fileID: 2099575729}
+    initialCount: 10
+    forwardAxis: 0
+    maxSpeed: 3
+    maxAcceleration: 0.8
+    maxAngularVelocity: 70
+    textureAssignments: []
+    behavioursToAdd:
+    - {fileID: 2099575730}
+  spawnInitialCountsOnStart: 1
+  halfWidth: 100
+  halfDepth: 100
+  localHeight: 0.5
+  randomSeed: 0
+--- !u!4 &1952861762
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1952861760}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -50.35061, y: -0, z: 15.08702}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &2094832660
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -917,6 +858,89 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: b424b71ab69da0c4e9080c0ca89ca428, type: 3}
+--- !u!1001 &2099575728
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -7.39
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 3.1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      propertyPath: m_Name
+      value: StripedFish
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2099575730}
+  m_SourcePrefab: {fileID: 100100000, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+--- !u!1 &2099575729 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 735ba76c90cdb7c4db56fc39e5f83c6d, type: 3}
+  m_PrefabInstance: {fileID: 2099575728}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2099575730
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2099575729}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9098cb1e72f9a3b4c8fd311a3884a6fd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StripedFishAnimatedQuadBillboard
+  targetCamera: {fileID: 330585545}
+  hideOriginalRenderer: 1
+  flattenQuadsToCamera: 1
+  maxQuadStretch: 1.6
+  finMaterialNameContains: Material
+  finRootBehindBodyMargin: 0.1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -925,7 +949,8 @@ SceneRoots:
   - {fileID: 410087041}
   - {fileID: 832575519}
   - {fileID: 1072815596}
-  - {fileID: 253540577}
   - {fileID: 2094832660}
   - {fileID: 394921865}
-  - {fileID: 193619925}
+  - {fileID: 1952861762}
+  - {fileID: 2099575728}
+  - {fileID: 190358583}
