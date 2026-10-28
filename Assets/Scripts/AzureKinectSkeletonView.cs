@@ -9,6 +9,9 @@ public sealed class AzureKinectSkeletonView : MonoBehaviour
     [SerializeField] private ProcessingBackend processingBackend = ProcessingBackend.DirectML;
     [SerializeField, Range(0.2f, 3f)] private float staleSeconds = 1f;
     [SerializeField, Range(1, 3)] private int minimumConfidence = 2;
+    [SerializeField] private bool renderSkeleton = true;
+    [SerializeField] private bool showStatusOverlay = true;
+    [SerializeField] private bool estimateHandShape;
     private AzureKinectCapture capture;
     private long displayedFrame = -1;
     private float retryAt;
@@ -21,6 +24,8 @@ public sealed class AzureKinectSkeletonView : MonoBehaviour
     public ulong DeviceTimestampMicroseconds => capture?.Latest?.TimestampMicroseconds ?? 0;
     public int BodyCount { get { var snapshot = capture?.Latest; return IsFresh(snapshot) ? snapshot.Bodies.Length : 0; } }
     public string TrackingStatus => capture?.Status ?? "Stopped";
+    internal string RgbStatus => capture?.RgbStatus ?? "RGB recognition stopped";
+    internal MediaPipeHandWorker.Result LatestRgb => capture?.LatestRgb;
 
     private void OnEnable()
     {
@@ -34,19 +39,20 @@ public sealed class AzureKinectSkeletonView : MonoBehaviour
     private void StartCapture()
     {
         if (capture != null && capture.IsAlive) return;
-        capture = new AzureKinectCapture(Path.GetFullPath(Path.Combine(Application.dataPath, "../.Local/AzureKinect/Runtime")), (int)processingBackend);
+        capture = new AzureKinectCapture(Path.GetFullPath(Path.Combine(Application.dataPath, "../.Local/AzureKinect/Runtime")), (int)processingBackend, estimateHandShape);
         displayedFrame = -1;
         capture.Start();
     }
     public void StartTracking() { manualStop = false; StartCapture(); }
     public void StopTracking() { manualStop = true; capture?.Stop(); }
     private bool IsFresh(AzureKinectCapture.Snapshot snapshot) => snapshot != null && (Stopwatch.GetTimestamp() - snapshot.ReceivedTicks) / (double)Stopwatch.Frequency < staleSeconds;
+    internal AzureKinectCapture.Snapshot LatestSnapshot { get { var snapshot = capture?.Latest; return IsFresh(snapshot) ? snapshot : null; } }
 
     private void Update()
     {
         var snapshot = capture?.Latest;
         if (!IsFresh(snapshot)) { foreach (var visual in visuals.Values) visual.Root.SetActive(false); }
-        else if (snapshot.FrameNumber != displayedFrame)
+        else if (renderSkeleton && snapshot.FrameNumber != displayedFrame)
         {
             displayedFrame = snapshot.FrameNumber;
             foreach (var visual in visuals.Values) visual.Root.SetActive(false);
@@ -71,6 +77,7 @@ public sealed class AzureKinectSkeletonView : MonoBehaviour
 
     private void OnGUI()
     {
+        if (!showStatusOverlay) return;
         GUILayout.BeginArea(new Rect(16, 16, 760, 150), GUI.skin.box);
         GUILayout.Label("AZURE KINECT — DEPTH SKELETON / RGB OFF");
         GUILayout.Label(TrackingStatus);

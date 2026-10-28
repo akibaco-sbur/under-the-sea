@@ -12,6 +12,9 @@
 #
 .utmp/
 /.Local/
+/Assets/.Local/
+__pycache__/
+*.pyc
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/

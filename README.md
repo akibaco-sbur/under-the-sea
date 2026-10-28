@@ -16,6 +16,10 @@
 
 同じシーンの `AzureKinectDemo` を有効にすると、Azure KinectのDepth入力から骨格を表示できます。RGB映像は使用しません。[SDKのセットアップと切替手順](Docs/AzureKinectSandbox.md)を参照してください。既定の魚デモはKinectを起動しません。魚の色変化・餌の消費・身体入力との接続は未実装です。
 
+手の開閉を単体で調べるには `Assets/Scenes/Sandbox/KinectTest.unity` を開きます。Depth画像とRGBの手認識、開閉判定とスコアを確認できます。認識はローカルで処理し、実験段階です。[Kinect手の開閉テスト](Docs/KinectHandTest.md)を参照してください。
+
+開閉判定を使わず右腕で餌を掬う試作は `Assets/Scenes/Sandbox/ScoopingTest.unity` です。ダイバーの一人称視点で、皿から手を持ち上げて餌を掬い、前へ差し出すと魚が食べに来ます。[掬うテストの操作・手アセットの準備](Docs/KinectScoopingTest.md)を参照してください。
+
 ## 開発
 
 - Unity **6000.3.26f1**（Unity Hubで同じバージョンを用意）

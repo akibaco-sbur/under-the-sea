@@ -38,6 +38,11 @@ internal static class AzureKinectNative
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct Float2 { public float X, Y; }
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Float3 { public float X, Y, Z; }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct Skeleton
     {
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public Joint[] Joints;
@@ -74,6 +79,15 @@ internal static class AzureKinectNative
     [DllImport("k4a", CallingConvention = Convention)] internal static extern int k4a_device_get_calibration(IntPtr device, int depthMode, int colorResolution, out Calibration calibration);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern int k4a_device_get_capture(IntPtr device, out IntPtr capture, int timeoutMs);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern void k4a_capture_release(IntPtr capture);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern IntPtr k4a_capture_get_depth_image(IntPtr capture);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern IntPtr k4a_capture_get_color_image(IntPtr capture);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern IntPtr k4a_image_get_buffer(IntPtr image);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern UIntPtr k4a_image_get_size(IntPtr image);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern int k4a_image_get_width_pixels(IntPtr image);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern int k4a_image_get_height_pixels(IntPtr image);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern int k4a_image_get_stride_bytes(IntPtr image);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern void k4a_image_release(IntPtr image);
+    [DllImport("k4a", CallingConvention = Convention)] internal static extern int k4a_calibration_3d_to_2d(ref Calibration calibration, ref Float3 source, int sourceCamera, int targetCamera, out Float2 pixel, out int valid);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern void k4a_device_stop_cameras(IntPtr device);
     [DllImport("k4a", CallingConvention = Convention)] internal static extern void k4a_device_close(IntPtr device);
     [DllImport("k4abt", CallingConvention = Convention)] internal static extern int k4abt_tracker_create(ref Calibration calibration, TrackerConfiguration config, out IntPtr tracker);
@@ -83,6 +97,8 @@ internal static class AzureKinectNative
     [DllImport("k4abt", CallingConvention = Convention)] internal static extern uint k4abt_frame_get_body_id(IntPtr frame, uint index);
     [DllImport("k4abt", CallingConvention = Convention)] internal static extern int k4abt_frame_get_body_skeleton(IntPtr frame, uint index, out Skeleton skeleton);
     [DllImport("k4abt", CallingConvention = Convention)] internal static extern ulong k4abt_frame_get_device_timestamp_usec(IntPtr frame);
+    [DllImport("k4abt", CallingConvention = Convention)] internal static extern IntPtr k4abt_frame_get_capture(IntPtr frame);
+    [DllImport("k4abt", CallingConvention = Convention)] internal static extern IntPtr k4abt_frame_get_body_index_map(IntPtr frame);
     [DllImport("k4abt", CallingConvention = Convention)] internal static extern void k4abt_frame_release(IntPtr frame);
     [DllImport("k4abt", CallingConvention = Convention)] internal static extern void k4abt_tracker_shutdown(IntPtr tracker);
     [DllImport("k4abt", CallingConvention = Convention)] internal static extern void k4abt_tracker_destroy(IntPtr tracker);
