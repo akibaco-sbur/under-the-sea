@@ -7,7 +7,7 @@ using UnityEngine.Rendering;
 /// bakes the animated vertices and flattens each original quad toward the camera.
 /// It does not reposition bones or discard the authored vertex animation.
 /// </summary>
-public sealed class FishAnimatedQuadBillboard : MonoBehaviour
+public sealed class StripedFishAnimatedQuadBillboard : MonoBehaviour
 {
     [SerializeField] Camera targetCamera;
     [SerializeField] bool hideOriginalRenderer = true;
@@ -39,10 +39,21 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
         public int[] boundaryEdges;
     }
 
+    sealed class DoubleSidedMaterialEntry
+    {
+        public Material material;
+        public int referenceCount;
+    }
+
+    static readonly Dictionary<Material, DoubleSidedMaterialEntry> doubleSidedMaterialCache =
+        new Dictionary<Material, DoubleSidedMaterialEntry>();
+
     SkinnedMeshRenderer source;
     MeshRenderer outputRenderer;
     Mesh outputMesh;
     Mesh bakedMesh;
+    Material[] outputMaterials;
+    readonly List<Material> acquiredMaterialSources = new List<Material>();
     Transform outputTransform;
     bool originalForceRenderingOff;
     bool originalUpdateWhenOffscreen;
@@ -58,7 +69,7 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
     readonly List<Vector3> bakedVertices = new List<Vector3>();
     readonly List<Vector3> projectedVertices = new List<Vector3>();
 
-    void Awake()
+    void Start()
     {
         source = FindAnimatedRenderer();
         if (!source)
@@ -69,17 +80,17 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
         }
         originalForceRenderingOff = source.forceRenderingOff;
         originalUpdateWhenOffscreen = source.updateWhenOffscreen;
-        if (!targetCamera) targetCamera = Camera.main;
+        if (!targetCamera) targetCamera = FindTargetCamera();
         if (!source.sharedMesh || !targetCamera)
         {
             Debug.LogError("Assign a SkinnedMeshRenderer mesh and a target camera.", this);
             enabled = false;
             return;
         }
-        Debug.Log("FishAnimatedQuadBillboard source: " + GetPath(source.transform) +
+        Debug.Log("StripedFishAnimatedQuadBillboard source: " + GetPath(source.transform) +
             " (mesh=" + source.sharedMesh.name + ", bones=" + source.bones.Length + ")", this);
 
-        bakedMesh = new Mesh { name = "Fish_AnimatedBake" };
+        bakedMesh = new Mesh { name = "StripedFish_AnimatedBake" };
         bakedMesh.MarkDynamic();
         source.BakeMesh(bakedMesh);
         bakedVertices.Clear();
@@ -91,7 +102,7 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
             return;
         }
 
-        var go = new GameObject("Fish Camera-Facing Mesh");
+        var go = new GameObject("StripedFish Camera-Facing Mesh");
         go.layer = gameObject.layer;
         // BakeMesh vertices are in source-renderer local space. Keeping the
         // output as an identity child avoids a world/local round trip through
@@ -116,7 +127,8 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
 
         go.AddComponent<MeshFilter>().sharedMesh = outputMesh;
         outputRenderer = go.AddComponent<MeshRenderer>();
-        outputRenderer.sharedMaterials = source.sharedMaterials;
+        outputMaterials = CreateDoubleSidedMaterials(source.sharedMaterials);
+        outputRenderer.sharedMaterials = outputMaterials;
         outputRenderer.shadowCastingMode = source.shadowCastingMode;
         outputRenderer.receiveShadows = source.receiveShadows;
         outputRenderer.lightProbeUsage = source.lightProbeUsage;
@@ -142,6 +154,14 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
         return null;
     }
 
+    Camera FindTargetCamera()
+    {
+        Camera mainCamera = Camera.main;
+        if (mainCamera) return mainCamera;
+        Camera[] cameras = Camera.allCameras;
+        return cameras.Length > 0 ? cameras[0] : null;
+    }
+
     string GetPath(Transform target)
     {
         string path = target.name;
@@ -156,6 +176,11 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
     bool BuildDisplayMesh()
     {
         Mesh mesh = source.sharedMesh;
+        if (!mesh.isReadable)
+        {
+            Debug.LogError("The source FBX mesh is not readable. Enable Read/Write in the FBX Model Import Settings, then reimport the asset.", this);
+            return false;
+        }
         Material[] sourceMaterials = source.sharedMaterials;
         for (int i = 0; i < sourceMaterials.Length && i < mesh.subMeshCount; i++)
         {
@@ -283,7 +308,11 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
             quadGetsFinRootCorrection[q] = quadSubmeshes[q] == finSubmeshIndex;
             if (quadGetsFinRootCorrection[q]) finQuadCount++;
         }
-        if (finSubmeshIndex < 0 || finQuadCount == 0)
+        if (string.IsNullOrEmpty(finMaterialNameContains))
+        {
+            // This fish has no fin-specific depth correction.
+        }
+        else if (finSubmeshIndex < 0 || finQuadCount == 0)
             Debug.LogWarning("No fin submesh matched material name '" + finMaterialNameContains +
                 "'. Fin-root depth correction is disabled; check the FBX material names/order in the Inspector.", this);
         else
@@ -384,10 +413,9 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
             }
         }
 
-        // Flattening an oblique quad reduces its area. Expand each island in
-        // its camera-facing plane to recover some of that area, then add a
-        // small overlap to hide seams between independently animated islands.
-        // The cap avoids turning edge-on fins into enormous patches.
+        // Flattening an oblique quad reduces its area. Recover that loss from
+        // the current camera projection; the cap avoids turning edge-on fins
+        // into enormous patches.
         for (int q = 0; q < quadTriangleOffsets.Length; q++)
         {
             int sub = quadSubmeshes[q];
@@ -527,6 +555,43 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
             ", materials=" + (outputRenderer ? outputRenderer.sharedMaterials.Length : 0), this);
     }
 
+    Material[] CreateDoubleSidedMaterials(Material[] sourceMaterials)
+    {
+        var result = new Material[sourceMaterials.Length];
+        for (int i = 0; i < sourceMaterials.Length; i++)
+        {
+            Material sourceMaterial = sourceMaterials[i];
+            if (!sourceMaterial) continue;
+
+            if (doubleSidedMaterialCache.TryGetValue(sourceMaterial, out DoubleSidedMaterialEntry cached))
+            {
+                cached.referenceCount++;
+                result[i] = cached.material;
+                acquiredMaterialSources.Add(sourceMaterial);
+                continue;
+            }
+
+            Material material = new Material(sourceMaterial);
+            material.name = sourceMaterial.name + " (Double Sided)";
+            if (material.HasProperty("_Cull"))
+                material.SetFloat("_Cull", (float)CullMode.Off);
+            else
+                Debug.LogWarning("Material '" + sourceMaterial.name +
+                    "' has no _Cull property; its shader may still hide back faces.", this);
+
+            if (material.HasProperty("_DoubleSidedEnable"))
+            {
+                material.SetFloat("_DoubleSidedEnable", 1f);
+                material.EnableKeyword("_DOUBLESIDED_ON");
+            }
+            doubleSidedMaterialCache.Add(sourceMaterial,
+                new DoubleSidedMaterialEntry { material = material, referenceCount = 1 });
+            acquiredMaterialSources.Add(sourceMaterial);
+            result[i] = material;
+        }
+        return result;
+    }
+
     static bool GetSharedEdge(Triangle a, Triangle b, out int first, out int second)
     {
         first = second = -1;
@@ -594,5 +659,23 @@ public sealed class FishAnimatedQuadBillboard : MonoBehaviour
         if (outputTransform) Destroy(outputTransform.gameObject);
         if (outputMesh) Destroy(outputMesh);
         if (bakedMesh) Destroy(bakedMesh);
+        ReleaseDoubleSidedMaterials();
+    }
+
+    void ReleaseDoubleSidedMaterials()
+    {
+        for (int i = 0; i < acquiredMaterialSources.Count; i++)
+        {
+            Material sourceMaterial = acquiredMaterialSources[i];
+            if (!doubleSidedMaterialCache.TryGetValue(sourceMaterial, out DoubleSidedMaterialEntry entry))
+                continue;
+            entry.referenceCount--;
+            if (entry.referenceCount <= 0)
+            {
+                doubleSidedMaterialCache.Remove(sourceMaterial);
+                if (entry.material) Destroy(entry.material);
+            }
+        }
+        acquiredMaterialSources.Clear();
     }
 }
