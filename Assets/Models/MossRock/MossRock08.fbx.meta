@@ -1,9 +1,14 @@
 fileFormatVersion: 2
-guid: d33b818ad2cfcee4cad9ddd8e60a0ece
+guid: a9abcd187af6b9546ac2d61c5c3d1084
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: moss rock 08
+    second: {fileID: 2100000, guid: 26a9dc5e909e59f419923676b14d3659, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

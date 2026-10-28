@@ -5,7 +5,7 @@ using UnityEngine;
 /// <summary>
 /// Spawns configured fish prefabs and gives each one independent, correlated
 /// stochastic swimming. The rig's Root bone is translated after animation evaluation.
-/// Swimming bounds use this component's local XZ plane.
+/// Swimming bounds use this component's local XYZ volume.
 /// </summary>
 [DefaultExecutionOrder(-100)]
 public sealed class SummonFish : MonoBehaviour
@@ -51,14 +51,15 @@ public sealed class SummonFish : MonoBehaviour
         public GameObject instance;
         public Transform rootBone;
         public Vector3 rootOffsetInInstance;
-        public Vector2 position;
-        public Vector2 spawnPosition;
-        public Vector2 heading;
+        public Vector3 position;
+        public Vector3 spawnPosition;
+        public Vector3 heading;
         public Quaternion baseRotation;
         public FishSpecies species;
         public float speed;
         public float speedPreference;
         public float angularVelocity;
+        public float pitchAngularVelocity;
         public float accelerationNoise;
         public float boundaryTurnSide;
         public bool textureAssignmentsApplied;
@@ -68,16 +69,29 @@ public sealed class SummonFish : MonoBehaviour
     [SerializeField] private FishSpecies[] species = Array.Empty<FishSpecies>();
     [SerializeField] private bool spawnInitialCountsOnStart = true;
 
-    [Header("Swimming area (this object's local XZ plane)")]
+    [Header("Swimming area (this object's local XYZ volume)")]
     [SerializeField, Min(0.1f)] private float halfWidth = 8f;
     [SerializeField, Min(0.1f)] private float halfDepth = 5f;
     [SerializeField] private float localHeight;
+
+    [Header("Vertical movement (local Y)")]
+    [SerializeField, Min(0f)] private float halfHeight = 2f;
+
+    [Header("Obstacle avoidance")]
+    [Tooltip("Assign scenery objects or empty parent objects. Every child Renderer becomes a separate, padded avoidance box.")]
+    [SerializeField] private Transform[] obstacleRoots = Array.Empty<Transform>();
+    [Tooltip("Extra padding around each renderer bounds, in local swimming-area units.")]
+    [SerializeField, Min(0f)] private float obstaclePadding = 0.35f;
+    [Tooltip("Additional clearance around the predicted fish path, in local swimming-area units.")]
+    [SerializeField, Min(0f)] private float fishClearance = 0.3f;
+    [SerializeField, Min(0.1f)] private float obstacleLookAhead = 2.5f;
 
     [SerializeField, HideInInspector] private int randomSeed;
 
     private readonly List<FishAgent> activeFish = new List<FishAgent>();
     private System.Random random;
     private Transform fishContainer;
+    private readonly List<Bounds> obstacleBounds = new List<Bounds>();
 
     public int FishCount => activeFish.Count;
 
@@ -85,9 +99,93 @@ public sealed class SummonFish : MonoBehaviour
     {
         int seed = randomSeed != 0 ? randomSeed : GetInstanceID();
         random = new System.Random(seed);
+        RebuildObstacleBounds();
         GameObject container = new GameObject("Summoned Fish");
         fishContainer = container.transform;
         fishContainer.SetParent(transform, false);
+    }
+
+    private void RebuildObstacleBounds()
+    {
+        obstacleBounds.Clear();
+        if (obstacleRoots == null) return;
+
+        var seen = new HashSet<Renderer>();
+        foreach (Transform obstacleRoot in obstacleRoots)
+        {
+            if (!obstacleRoot) continue;
+            Renderer[] renderers = obstacleRoot.GetComponentsInChildren<Renderer>(true);
+            foreach (Renderer renderer in renderers)
+            {
+                if (!renderer || !seen.Add(renderer)) continue;
+                Bounds worldBounds = renderer.bounds;
+                Vector3 min = worldBounds.min;
+                Vector3 max = worldBounds.max;
+                Bounds localBounds = new Bounds(transform.InverseTransformPoint(new Vector3(min.x, min.y, min.z)), Vector3.zero);
+                for (int corner = 1; corner < 8; corner++)
+                {
+                    Vector3 point = new Vector3(
+                        (corner & 1) == 0 ? min.x : max.x,
+                        (corner & 2) == 0 ? min.y : max.y,
+                        (corner & 4) == 0 ? min.z : max.z);
+                    localBounds.Encapsulate(transform.InverseTransformPoint(point));
+                }
+                localBounds.Expand(obstaclePadding * 2f);
+                obstacleBounds.Add(localBounds);
+            }
+        }
+
+        if (obstacleRoots.Length > 0 && obstacleBounds.Count == 0)
+            Debug.LogWarning("SummonFish: obstacle roots contain no Renderer components; no obstacles will be avoided.", this);
+    }
+
+    private bool TryGetObstacleAvoidance(Vector3 position, Vector3 direction, float lookAhead,
+        float turnSide, out Vector3 desiredDirection)
+    {
+        desiredDirection = Vector3.zero;
+        if (obstacleBounds.Count == 0) return false;
+
+        int sampleCount = 10;
+        for (int sample = 1; sample <= sampleCount; sample++)
+        {
+            float t = lookAhead * sample / sampleCount;
+            Vector3 probe = position + direction * t;
+            for (int i = 0; i < obstacleBounds.Count; i++)
+            {
+                Bounds bounds = obstacleBounds[i];
+                bounds.Expand(fishClearance * 2f);
+                if (!bounds.Contains(probe)) continue;
+
+                Vector3 escape = GetNearestBoundsExit(bounds, probe);
+                Vector3 tangent = Vector3.Cross(Vector3.up, direction);
+                if (tangent.sqrMagnitude < 0.0001f)
+                    tangent = Vector3.Cross(Vector3.forward, direction);
+                tangent.Normalize();
+                tangent *= turnSide;
+
+                // Prefer sliding around the obstacle instead of turning directly back.
+                desiredDirection = (escape * 1.4f + tangent * 0.8f + direction * 0.15f).normalized;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Vector3 GetNearestBoundsExit(Bounds bounds, Vector3 point)
+    {
+        float left = point.x - bounds.min.x;
+        float right = bounds.max.x - point.x;
+        float down = point.y - bounds.min.y;
+        float up = bounds.max.y - point.y;
+        float back = point.z - bounds.min.z;
+        float forward = bounds.max.z - point.z;
+        float nearest = Mathf.Min(left, right, down, up, back, forward);
+        if (nearest == left) return Vector3.left;
+        if (nearest == right) return Vector3.right;
+        if (nearest == down) return Vector3.down;
+        if (nearest == up) return Vector3.up;
+        if (nearest == back) return Vector3.back;
+        return Vector3.forward;
     }
 
     private void Start()
@@ -138,8 +236,8 @@ public sealed class SummonFish : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             GameObject instance = Instantiate(item.prefab, fishContainer);
-            Vector2 spawn = RandomPointInArea();
-            instance.transform.localPosition = new Vector3(spawn.x, localHeight, spawn.y);
+            Vector3 spawn = RandomPointInArea();
+            instance.transform.localPosition = spawn;
             instance.transform.localRotation = item.prefab.transform.localRotation;
             instance.transform.localScale = item.prefab.transform.localScale;
             AddConfiguredBehaviours(instance, item);
@@ -167,6 +265,7 @@ public sealed class SummonFish : MonoBehaviour
                 speedPreference = NextFloat(0.38f, 0.68f),
                 speed = item.maxSpeed * NextFloat(0.3f, 0.55f),
                 angularVelocity = 0f,
+                pitchAngularVelocity = 0f,
                 accelerationNoise = 0f,
                 boundaryTurnSide = NextFloat(0f, 1f) < 0.5f ? -1f : 1f
             };
@@ -225,75 +324,75 @@ public sealed class SummonFish : MonoBehaviour
         accelerationCommand = Mathf.Clamp(accelerationCommand, -maxAcceleration, maxAcceleration);
         fish.speed = Mathf.Clamp(fish.speed + accelerationCommand * dt, 0f, maxSpeed);
 
-        // Angular velocity is a mean-reverting random process. Its damping
-        // makes long one-direction spins unlikely; the species limit is hard.
+        // Yaw and pitch are separate mean-reverting random processes. This lets
+        // the fish explore depth without mechanically spiralling.
         const float turnMemory = 1.15f;
         const float turnNoiseFraction = 0.24f;
         float turnNoise = maxAngularVelocity * turnNoiseFraction * Mathf.Sqrt(2f / turnMemory) *
                           Mathf.Sqrt(dt) * NextGaussian();
         fish.angularVelocity += (-fish.angularVelocity / turnMemory) * dt + turnNoise;
-
-        float boundaryWeight;
-        float boundaryTurn = GetBoundaryTurn(fish, maxAngularVelocity, out boundaryWeight);
-        fish.angularVelocity = Mathf.Lerp(fish.angularVelocity, boundaryTurn,
-            boundaryWeight * Mathf.Clamp01(dt * 2.5f));
+        float pitchNoise = maxAngularVelocity * turnNoiseFraction * Mathf.Sqrt(2f / turnMemory) *
+                           Mathf.Sqrt(dt) * NextGaussian();
+        fish.pitchAngularVelocity += (-fish.pitchAngularVelocity / turnMemory) * dt + pitchNoise;
         fish.angularVelocity = Mathf.Clamp(fish.angularVelocity, -maxAngularVelocity, maxAngularVelocity);
+        fish.pitchAngularVelocity = Mathf.Clamp(fish.pitchAngularVelocity, -maxAngularVelocity * 0.55f,
+            maxAngularVelocity * 0.55f);
 
-        fish.heading = Rotate(fish.heading, fish.angularVelocity * dt);
+        Vector3 currentHeading = fish.heading;
+        Vector3 desiredHeading = RotateHeading(currentHeading, fish.angularVelocity * dt,
+            fish.pitchAngularVelocity * dt);
+        float lookAhead = Mathf.Max(obstacleLookAhead, fish.speed * 1.8f);
+        Vector3 avoidanceDirection;
+        if (TryGetObstacleAvoidance(fish.position, desiredHeading, lookAhead,
+            fish.boundaryTurnSide, out avoidanceDirection))
+            desiredHeading = avoidanceDirection;
+
+        Vector3 boundaryDirection;
+        if (TryGetBoundaryDirection(fish.position + desiredHeading * lookAhead, out boundaryDirection))
+            desiredHeading = boundaryDirection;
+
+        // Apply one shared angular-speed cap to random turns and safety steering.
+        fish.heading = Vector3.RotateTowards(currentHeading, desiredHeading,
+            maxAngularVelocity * Mathf.Deg2Rad * dt, 0f).normalized;
+
         fish.position += fish.heading * fish.speed * dt;
         KeepInsideArea(fish, maxAngularVelocity, dt);
         ApplyFishPose(fish);
     }
 
-    private float GetBoundaryTurn(FishAgent fish, float maxAngularVelocity, out float urgency)
+    private bool TryGetBoundaryDirection(Vector3 predicted, out Vector3 inward)
     {
-        float lookAhead = Mathf.Clamp(fish.speed * 1.8f, 0.5f, 2.5f);
-        Vector2 predicted = fish.position + fish.heading * lookAhead;
-        float softX = Mathf.Max(0.5f, halfWidth * 0.28f);
-        float softZ = Mathf.Max(0.5f, halfDepth * 0.28f);
-        float edgeX = Mathf.InverseLerp(halfWidth - softX, halfWidth, Mathf.Abs(predicted.x));
-        float edgeZ = Mathf.InverseLerp(halfDepth - softZ, halfDepth, Mathf.Abs(predicted.y));
-        urgency = Mathf.Max(edgeX, edgeZ);
-        urgency = urgency * urgency * (3f - 2f * urgency);
-        if (urgency < 0.001f)
-            return 0f;
-
-        Vector2 inward = new Vector2(-predicted.x / Mathf.Max(halfWidth, 0.01f),
-                                     -predicted.y / Mathf.Max(halfDepth, 0.01f));
-        if (inward.sqrMagnitude < 0.0001f)
-            inward = -fish.heading;
-        inward.Normalize();
-        float angleToInterior = Vector2.SignedAngle(fish.heading, inward);
-
-        // Turn toward the open area, using only the available angular-speed cap.
-        // A small side choice resolves the exact 180-degree case without a fixed bias.
-        if (Mathf.Abs(angleToInterior) > 170f)
-            angleToInterior = fish.boundaryTurnSide * 170f;
-        float desiredTurnRate = Mathf.Clamp(angleToInterior / 1.25f,
-            -maxAngularVelocity, maxAngularVelocity);
-        return desiredTurnRate;
+        inward = Vector3.zero;
+        Vector3 clamped = new Vector3(
+            Mathf.Clamp(predicted.x, -halfWidth, halfWidth),
+            Mathf.Clamp(predicted.y, localHeight - halfHeight, localHeight + halfHeight),
+            Mathf.Clamp(predicted.z, -halfDepth, halfDepth));
+        Vector3 correction = clamped - predicted;
+        if (correction.sqrMagnitude < 0.0001f) return false;
+        inward = correction.normalized;
+        return true;
     }
 
     private void KeepInsideArea(FishAgent fish, float maxAngularVelocity, float dt)
     {
-        float x = Mathf.Clamp(fish.position.x, -halfWidth, halfWidth);
-        float z = Mathf.Clamp(fish.position.y, -halfDepth, halfDepth);
-        if (!Mathf.Approximately(x, fish.position.x) || !Mathf.Approximately(z, fish.position.y))
+        Vector3 clamped = new Vector3(
+            Mathf.Clamp(fish.position.x, -halfWidth, halfWidth),
+            Mathf.Clamp(fish.position.y, localHeight - halfHeight, localHeight + halfHeight),
+            Mathf.Clamp(fish.position.z, -halfDepth, halfDepth));
+        if ((clamped - fish.position).sqrMagnitude > 0.000001f)
         {
-            fish.position = new Vector2(x, z);
-            Vector2 inward = new Vector2(-x / Mathf.Max(halfWidth, 0.01f),
-                                         -z / Mathf.Max(halfDepth, 0.01f)).normalized;
-            float angle = Vector2.SignedAngle(fish.heading, inward);
-            fish.angularVelocity = Mathf.Clamp(angle / Mathf.Max(dt, 0.05f),
-                -maxAngularVelocity, maxAngularVelocity);
-            fish.heading = Rotate(fish.heading, fish.angularVelocity * dt);
+            fish.position = clamped;
+            Vector3 inward = (new Vector3(-clamped.x, localHeight - clamped.y, -clamped.z)).normalized;
+            if (inward.sqrMagnitude > 0.0001f)
+                fish.heading = Vector3.RotateTowards(fish.heading, inward,
+                    maxAngularVelocity * Mathf.Deg2Rad * dt, 0f).normalized;
         }
     }
 
     private void ApplyFishPose(FishAgent fish)
     {
         Vector3 localForward = GetForwardAxis(fish.species.forwardAxis);
-        Vector3 desiredWorldForward = transform.TransformDirection(new Vector3(fish.heading.x, 0f, fish.heading.y));
+        Vector3 desiredWorldForward = transform.TransformDirection(fish.heading);
         if (desiredWorldForward.sqrMagnitude > 0.0001f)
         {
             Vector3 baseWorldForward = fish.baseRotation * localForward;
@@ -301,21 +400,24 @@ public sealed class SummonFish : MonoBehaviour
             fish.instance.transform.rotation = turn * fish.baseRotation;
         }
 
-        Vector2 displacement = fish.position - fish.spawnPosition;
+        Vector3 displacement = fish.position - fish.spawnPosition;
         Vector3 movedRoot = fish.instance.transform.TransformPoint(fish.rootOffsetInInstance) +
-                            transform.TransformVector(new Vector3(displacement.x, 0f, displacement.y));
+                            transform.TransformVector(displacement);
         fish.rootBone.position = movedRoot;
     }
 
-    private Vector2 RandomDirection()
+    private Vector3 RandomDirection()
     {
         float angle = NextFloat(0f, Mathf.PI * 2f);
-        return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+        float vertical = NextFloat(-0.3f, 0.3f);
+        float planar = Mathf.Sqrt(1f - vertical * vertical);
+        return new Vector3(Mathf.Cos(angle) * planar, vertical, Mathf.Sin(angle) * planar);
     }
 
-    private Vector2 RandomPointInArea()
+    private Vector3 RandomPointInArea()
     {
-        return new Vector2(NextFloat(-halfWidth, halfWidth), NextFloat(-halfDepth, halfDepth));
+        return new Vector3(NextFloat(-halfWidth, halfWidth),
+            localHeight + NextFloat(-halfHeight, halfHeight), NextFloat(-halfDepth, halfDepth));
     }
 
     private float NextFloat(float min, float max)
@@ -330,13 +432,13 @@ public sealed class SummonFish : MonoBehaviour
         return (float)(Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2));
     }
 
-    private static Vector2 Rotate(Vector2 direction, float degrees)
+    private static Vector3 RotateHeading(Vector3 direction, float yawDegrees, float pitchDegrees)
     {
-        float radians = degrees * Mathf.Deg2Rad;
-        float sin = Mathf.Sin(radians);
-        float cos = Mathf.Cos(radians);
-        return new Vector2(direction.x * cos - direction.y * sin,
-                           direction.x * sin + direction.y * cos).normalized;
+        Vector3 result = Quaternion.AngleAxis(yawDegrees, Vector3.up) * direction;
+        Vector3 right = Vector3.Cross(Vector3.up, result);
+        if (right.sqrMagnitude < 0.0001f)
+            right = Vector3.Cross(Vector3.forward, result);
+        return (Quaternion.AngleAxis(pitchDegrees, right.normalized) * result).normalized;
     }
 
     private static Vector3 GetForwardAxis(LocalForwardAxis axis)
