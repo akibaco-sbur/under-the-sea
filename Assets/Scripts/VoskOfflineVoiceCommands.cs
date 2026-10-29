@@ -363,8 +363,8 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         Add(map, Command.LookRight, "右", "右向いて", "右を向いて");
         Add(map, Command.LookLeft, "左", "左向いて", "左を向いて");
         Add(map, Command.TurnAround, "後ろ", "後ろ向いて", "後ろを向いて");
-        Add(map, Command.MoveForward, "進め", "前進", "前に進んで", "前へ", "前");
-        Add(map, Command.Stop, "止まれ", "止まって", "停止", "ストップ");
+        Add(map, Command.MoveForward, "進め", "進んで", "すすんで", "進んでください", "前進", "前へ", "前に進んで", "前へ進んで", "前に進んでください");
+        Add(map, Command.Stop, "止まれ", "とまれ", "止まって", "とまって", "止まってください", "停止", "ストップ");
         Add(map, Command.Feeding, "餌やり", "餌をあげる", "餌をあげよう");
         return map;
     }
