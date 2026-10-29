@@ -7223,13 +7223,49 @@ MonoBehaviour:
         m_CallState: 2
   moveForward:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 11500000, guid: 188adc850f03e55458de766f318e4b41, type: 3}
+        m_TargetAssemblyTypeName: UnityEditor.MonoScript, UnityEditor.CoreModule
+        m_MethodName: 
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
   stop:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 11500000, guid: 188adc850f03e55458de766f318e4b41, type: 3}
+        m_TargetAssemblyTypeName: 
+        m_MethodName: 
+        m_Mode: 0
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: 
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
   feeding:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 11500000, guid: 188adc850f03e55458de766f318e4b41, type: 3}
+        m_TargetAssemblyTypeName: 
+        m_MethodName: 
+        m_Mode: 0
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: 
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!4 &1966576358
 Transform:
   m_ObjectHideFlags: 0
@@ -8021,6 +8057,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
       insertIndex: -1
       addedObject: {fileID: 2048562561}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2048562562}
   m_SourcePrefab: {fileID: 100100000, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
 --- !u!1 &2048562557 stripped
 GameObject:
@@ -8063,6 +8102,28 @@ MonoBehaviour:
   horizontalStep: 45
   maxVerticalAngle: 80
   maxHorizontalAngle: 90
+--- !u!114 &2048562562
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2048562557}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 188adc850f03e55458de766f318e4b41, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DiverMovementController
+  movementRoot: {fileID: 2048562560}
+  movementReference: {fileID: 330585546}
+  maximumSpeed: 1
+  acceleration: 0.55
+  deceleration: 1.2
+  rootBone: {fileID: 2048562560}
+  spine005Bone: {fileID: 2076042497}
+  maximumRootLeanDegrees: 8
+  spineCounterLeanMultiplier: 1
+  leanResponse: 3
 --- !u!1 &2052245357
 GameObject:
   m_ObjectHideFlags: 0
@@ -8243,6 +8304,11 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2063110410}
   m_Mesh: {fileID: -5915937582233434505, guid: c63ca13cbc7fa13459b716726bd72539, type: 3}
+--- !u!4 &2076042497 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -2024745182288029767, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+  m_PrefabInstance: {fileID: 2048562556}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &2094832660
 PrefabInstance:
   m_ObjectHideFlags: 0
