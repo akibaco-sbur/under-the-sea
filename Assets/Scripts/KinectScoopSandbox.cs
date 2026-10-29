@@ -11,6 +11,18 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     [SerializeField] private Transform[] fish, tails;
     [SerializeField] private TextMeshProUGUI guide, status, progressText;
     [SerializeField] private UnityEngine.UI.Image progressFill;
+    [Header("Feeding visuals")]
+    [SerializeField] private Color[] foodColorPalette =
+    {
+        new Color(1f, 0.34f, 0.08f),
+        new Color(0.08f, 0.72f, 1f),
+        new Color(0.32f, 1f, 0.28f),
+        new Color(0.8f, 0.25f, 1f)
+    };
+    [SerializeField, Min(1f)] private float foodParticlesPerSecond = 36f;
+    [SerializeField, Min(0.1f)] private float foodParticleLifetime = 3f;
+    [SerializeField, Min(0.001f)] private float foodParticleSize = 0.035f;
+    [SerializeField, Range(0.01f, 0.3f)] private float foodCloudSpread = 0.07f;
     private TMP_FontAsset runtimeFont;
     private Vector3[] swimmingCenters;
     private Vector3 lastHand, lastElbow, lastWrist;
@@ -19,6 +31,15 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     private int meals;
     private Renderer bowlRim;
     private MaterialPropertyBlock rimProperties;
+    private Renderer foodRenderer;
+    private Renderer[] fishBodyRenderers;
+    private MaterialPropertyBlock foodProperties;
+    private MaterialPropertyBlock fishProperties;
+    private Vector3 foodRestScale;
+    private Color currentFoodColor;
+    private float particleRemainder;
+    private ParticleSystem foodParticles;
+    private Material foodParticleMaterial;
 
     // Only for deterministic Editor checks. Live input is always the default.
     public bool DiagnosticInput { get; set; }
@@ -30,6 +51,20 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     private void Start()
     {
         interaction.Configure(handCenter, food, bowl, diverCamera);
+        foodRestScale = food.localScale;
+        foodRenderer = food.GetComponent<Renderer>();
+        if (foodRenderer == null) foodRenderer = food.GetComponentInChildren<Renderer>();
+        foodProperties = new MaterialPropertyBlock();
+        fishProperties = new MaterialPropertyBlock();
+        fishBodyRenderers = new Renderer[fish.Length];
+        for (int i = 0; i < fish.Length; i++)
+        {
+            fishBodyRenderers[i] = fish[i] != null ? fish[i].GetComponent<Renderer>() : null;
+            if (fishBodyRenderers[i] == null && fish[i] != null)
+                fishBodyRenderers[i] = fish[i].GetComponentInChildren<Renderer>();
+        }
+        CreateFoodParticles();
+        EnterFeedingWait();
         bowlRim = bowl.Find("Rim")?.GetComponent<Renderer>();
         rimProperties = new MaterialPropertyBlock();
         swimmingCenters = new Vector3[fish.Length];
@@ -71,6 +106,7 @@ public sealed class KinectScoopSandbox : MonoBehaviour
         }
         DrawArm();
         interaction.Tick(lastHand, tracked, dt);
+        UpdateFoodDispersion(dt);
         Swim(dt);
         if (bowlRim != null)
         {
@@ -134,12 +170,122 @@ public sealed class KinectScoopSandbox : MonoBehaviour
         if (feeding && Vector3.Distance(fish[0].position, interaction.FoodPosition) < 0.13f)
         {
             interaction.ConsumeFood();
+            ApplyFoodColorToFish(fishBodyRenderers[0]);
             meals++;
+            EnterFeedingWait();
         }
+    }
+
+    /// <summary>Starts a new feeding wait and chooses one food color for that meal.</summary>
+    public void EnterFeedingWait()
+    {
+        if (foodColorPalette == null || foodColorPalette.Length == 0)
+            currentFoodColor = new Color(1f, 0.45f, 0.12f);
+        else
+            currentFoodColor = foodColorPalette[Random.Range(0, foodColorPalette.Length)];
+
+        particleRemainder = 0f;
+        if (food != null)
+            food.localScale = foodRestScale;
+        ApplyFoodColor(foodRenderer, currentFoodColor, foodProperties);
+    }
+
+    private void CreateFoodParticles()
+    {
+        var particleObject = new GameObject("Food Dispersion");
+        particleObject.transform.SetParent(transform, false);
+        foodParticles = particleObject.AddComponent<ParticleSystem>();
+
+        var main = foodParticles.main;
+        main.playOnAwake = false;
+        main.loop = true;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.startLifetime = foodParticleLifetime;
+        main.startSpeed = 0f;
+        main.startSize = foodParticleSize;
+        main.startColor = Color.white;
+        main.maxParticles = 1800;
+
+        var emission = foodParticles.emission;
+        emission.enabled = false;
+        var shape = foodParticles.shape;
+        shape.enabled = false;
+        var colorOverLifetime = foodParticles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        var fade = new Gradient();
+        fade.SetKeys(
+            new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+            new[] { new GradientAlphaKey(0.8f, 0f), new GradientAlphaKey(0f, 1f) });
+        colorOverLifetime.color = new ParticleSystem.MinMaxGradient(fade);
+
+        var particleRenderer = particleObject.GetComponent<ParticleSystemRenderer>();
+        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
+        if (shader != null)
+        {
+            foodParticleMaterial = new Material(shader);
+            if (foodParticleMaterial.HasProperty("_BaseColor")) foodParticleMaterial.SetColor("_BaseColor", Color.white);
+            if (foodParticleMaterial.HasProperty("_Color")) foodParticleMaterial.SetColor("_Color", Color.white);
+            particleRenderer.sharedMaterial = foodParticleMaterial;
+        }
+        foodParticles.Play();
+    }
+
+    private void UpdateFoodDispersion(float dt)
+    {
+        float progress = interaction.OfferProgress;
+        if (food != null)
+            food.localScale = foodRestScale * Mathf.Lerp(1f, 0.015f, progress);
+
+        if (foodParticles == null || progress <= 0f)
+            return;
+
+        float amount = foodParticlesPerSecond * dt + particleRemainder;
+        int count = Mathf.FloorToInt(amount);
+        particleRemainder = amount - count;
+        if (count <= 0)
+            return;
+
+        Vector3 source = interaction.FoodPosition;
+        Vector3 forward = diverCamera != null ? diverCamera.transform.forward : Vector3.forward;
+        Vector3 spreadAxis = (forward + Random.insideUnitSphere * 0.65f).normalized;
+        for (int i = 0; i < count; i++)
+        {
+            var emit = new ParticleSystem.EmitParams
+            {
+                position = source + Random.insideUnitSphere * foodCloudSpread,
+                velocity = spreadAxis * Random.Range(0.03f, 0.12f) + Random.insideUnitSphere * 0.035f,
+                startLifetime = foodParticleLifetime * Random.Range(0.75f, 1.3f),
+                startSize = foodParticleSize * Random.Range(0.65f, 1.35f),
+                startColor = currentFoodColor
+            };
+            foodParticles.Emit(emit, 1);
+        }
+    }
+
+    private static void ApplyFoodColor(Renderer target, Color color, MaterialPropertyBlock properties)
+    {
+        if (target == null || properties == null)
+            return;
+        target.GetPropertyBlock(properties);
+        properties.SetColor("_BaseColor", color);
+        properties.SetColor("_Color", color);
+        target.SetPropertyBlock(properties);
+    }
+
+    private void ApplyFoodColorToFish(Renderer target)
+    {
+        if (target == null)
+            return;
+        Color tint = Color.Lerp(Color.white, currentFoodColor, 0.72f);
+        ApplyFoodColor(target, tint, fishProperties);
     }
 
     private void OnDestroy()
     {
+        if (foodParticles != null) Destroy(foodParticles.gameObject);
+        if (foodParticleMaterial != null) Destroy(foodParticleMaterial);
         if (runtimeFont != null)
         {
             foreach (var texture in runtimeFont.atlasTextures) if (texture != null) Destroy(texture);

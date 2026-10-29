@@ -8095,6 +8095,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DiverViewController
   bodyRoot: {fileID: 2048562560}
   faceBone: {fileID: 2048562559}
+  spine005Bone: {fileID: 2076042497}
   spine006Bone: {fileID: 2048562558}
   viewCamera: {fileID: 440506743}
   billboardCamera: {fileID: 330585545}
@@ -8130,6 +8131,7 @@ MonoBehaviour:
   obstacleClearance: 0.45
   rootBone: {fileID: 2048562560}
   spine005Bone: {fileID: 2076042497}
+  viewController: {fileID: 2048562561}
   maximumRootLeanDegrees: 25
   spineCounterLeanMultiplier: 1
   leanResponse: 3
