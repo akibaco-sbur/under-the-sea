@@ -890,7 +890,7 @@ GameObject:
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
   m_Layer: 0
-  m_Name: Main Camera
+  m_Name: Billboard Camera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -963,13 +963,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0.95173925, z: -0, w: -0.30690783}
-  m_LocalPosition: {x: -8.8, y: 2.02, z: 17.4}
-  m_LocalScale: {x: 0.73299, y: -0.6903, z: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.1, y: 5.11, z: 9.95}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: -215.746, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1413,6 +1413,143 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 438316454}
   m_Mesh: {fileID: -5283058451948839198, guid: 5a6b9335d663f814f8e2ec86a98ee8b8, type: 3}
+--- !u!1 &440506740
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 440506744}
+  - component: {fileID: 440506743}
+  - component: {fileID: 440506742}
+  - component: {fileID: 440506741}
+  m_Layer: 0
+  m_Name: DiverView
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &440506741
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 440506740}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
+--- !u!81 &440506742
+AudioListener:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 440506740}
+  m_Enabled: 1
+--- !u!20 &440506743
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 440506740}
+  m_Enabled: 1
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.3
+  far clip plane: 1000
+  field of view: 60
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 3
+  m_HDR: 1
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
+--- !u!4 &440506744
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 440506740}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.25, y: 6.17, z: 10.15}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &447541228
 GameObject:
   m_ObjectHideFlags: 0
@@ -6977,6 +7114,173 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1957224869}
   m_Mesh: {fileID: -5915937582233434505, guid: c63ca13cbc7fa13459b716726bd72539, type: 3}
+--- !u!1 &1966576356
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1966576358}
+  - component: {fileID: 1966576357}
+  m_Layer: 0
+  m_Name: VoiceCommands
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1966576357
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1966576356}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7692cfc538e01594b938de1076f99bc4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VoskOfflineVoiceCommands
+  modelFolderName: vosk-model-ja-0.22.zip
+  requestedMicrophoneRate: 16000
+  palmUpRequiredForFeeding: 1
+  lookUp:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2048562561}
+        m_TargetAssemblyTypeName: DiverViewController, Assembly-CSharp
+        m_MethodName: LookUp
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  lookDown:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2048562561}
+        m_TargetAssemblyTypeName: DiverViewController, Assembly-CSharp
+        m_MethodName: LookDown
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  lookRight:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2048562561}
+        m_TargetAssemblyTypeName: DiverViewController, Assembly-CSharp
+        m_MethodName: LookRight
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  lookLeft:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2048562561}
+        m_TargetAssemblyTypeName: DiverViewController, Assembly-CSharp
+        m_MethodName: LookLeft
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  turnAround:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2048562561}
+        m_TargetAssemblyTypeName: DiverViewController, Assembly-CSharp
+        m_MethodName: TurnAround
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  moveForward:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2048562562}
+        m_TargetAssemblyTypeName: DiverMovementController, Assembly-CSharp
+        m_MethodName: MoveForward
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  stop:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2048562562}
+        m_TargetAssemblyTypeName: DiverMovementController, Assembly-CSharp
+        m_MethodName: Stop
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  feeding:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2048562557}
+        m_TargetAssemblyTypeName: 
+        m_MethodName: 
+        m_Mode: 0
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: 
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+--- !u!4 &1966576358
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1966576356}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -2.43561, y: 1.99292, z: 5.76469}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1975786216
 GameObject:
   m_ObjectHideFlags: 0
@@ -7749,8 +8053,88 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2048562561}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2048562562}
   m_SourcePrefab: {fileID: 100100000, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+--- !u!1 &2048562557 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+  m_PrefabInstance: {fileID: 2048562556}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2048562558 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -5363356049833362231, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+  m_PrefabInstance: {fileID: 2048562556}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2048562559 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8003454280088939756, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+  m_PrefabInstance: {fileID: 2048562556}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2048562560 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4897275111664964280, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+  m_PrefabInstance: {fileID: 2048562556}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2048562561
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2048562557}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 798f2a99b32282a4283d8b26a3c3c038, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DiverViewController
+  bodyRoot: {fileID: 2048562560}
+  faceBone: {fileID: 2048562559}
+  spine005Bone: {fileID: 2076042497}
+  spine006Bone: {fileID: 2048562558}
+  viewCamera: {fileID: 440506743}
+  billboardCamera: {fileID: 330585545}
+  viewCameraPositionOffset: {x: 0, y: 0, z: 0.1}
+  verticalStep: 40
+  horizontalStep: 45
+  maxVerticalAngle: 80
+  maxHorizontalAngle: 90
+  viewSmoothTime: 0.22
+  bodyTurnDuration: 0.8
+--- !u!114 &2048562562
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2048562557}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 188adc850f03e55458de766f318e4b41, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DiverMovementController
+  movementRoot: {fileID: 2048562560}
+  movementReference: {fileID: 330585546}
+  maximumSpeed: 10
+  acceleration: 0.55
+  deceleration: 3
+  obstacleRayOrigin: {fileID: 0}
+  obstacleLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  obstacleRayHeight: 1
+  obstacleClearance: 0.45
+  rootBone: {fileID: 2048562560}
+  spine005Bone: {fileID: 2076042497}
+  viewController: {fileID: 2048562561}
+  maximumRootLeanDegrees: 25
+  spineCounterLeanMultiplier: 1
+  leanResponse: 3
 --- !u!1 &2052245357
 GameObject:
   m_ObjectHideFlags: 0
@@ -7931,6 +8315,11 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2063110410}
   m_Mesh: {fileID: -5915937582233434505, guid: c63ca13cbc7fa13459b716726bd72539, type: 3}
+--- !u!4 &2076042497 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -2024745182288029767, guid: a6ce2356da7a4e94090779b26e4b281c, type: 3}
+  m_PrefabInstance: {fileID: 2048562556}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &2094832660
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8275,3 +8664,5 @@ SceneRoots:
   - {fileID: 190358583}
   - {fileID: 491177940}
   - {fileID: 2048562556}
+  - {fileID: 1966576358}
+  - {fileID: 440506744}
