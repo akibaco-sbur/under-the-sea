@@ -37,6 +37,7 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
     [SerializeField, Min(1f), InspectorName("近い魚を探す範囲")] private float gatheringSearchRadius = 60f;
     private SummonFish.FeedingGroup feedingGroup;
     private Coroutine feedingAlignment;
+    private DiverViewController feedingView;
     private float nextFishSearchTime;
     private bool loggedNoFeedingFish;
     public int CurrentFoodColorIndex => currentFoodColorIndex;
@@ -221,10 +222,14 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
                 hasArmPose = true;
             }
         }
-        if (armFollowing && armRig != null && hasArmPose)
+        Vector3 contactPosition = lastHandPosition;
+        if (armFollowing && armRig != null && hasArmPose &&
             armRig.ApplyPoseAtPalm(armShoulder, armElbow, armWrist, armHandRotation,
-                hasArmHandOrientation, true, Mathf.Min(Time.deltaTime, 0.08f), lastHandPosition);
-        interaction.Tick(lastHandPosition, tracked, Mathf.Min(Time.deltaTime, 0.08f));
+                hasArmHandOrientation, true, Mathf.Min(Time.deltaTime, 0.08f), lastHandPosition))
+            contactPosition = armRig.PalmCenterPosition;
+        // The rendered palm includes the camera-relative calibration offset.
+        // Contact, marker and carried food must all use that same world position.
+        interaction.Tick(contactPosition, tracked, Mathf.Min(Time.deltaTime, 0.08f));
         keyboardHandMarker.SetActive(keyboardTestMode && trayRoot.gameObject.activeSelf && !dispersed);
         if (voiceCommands != null)
             voiceCommands.SetPalmOrientation(keyboardTestMode ? Quaternion.LookRotation(Vector3.forward, Vector3.up) : pose != null ? pose.HandRotation : Quaternion.identity,
@@ -246,6 +251,7 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
     public void EnterFeedingWait()
     {
         if (DiverStartupGate.IsBlocked(gameObject.scene)) return;
+        if (IsFeedingActive) return;
         if (trayRoot == null || food == null || interaction == null)
             return;
         CancelFeedingAlignment();
@@ -257,7 +263,9 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
             if (diver.gameObject.scene != gameObject.scene) continue;
             var movement = diver.GetComponent<DiverMovementController>();
             if (movement) movement.ResetMovement();
-            if (!diver.TryAlignBodyToView(out int version)) return;
+            feedingView = diver;
+            feedingView.SetFeedingControlLock(true);
+            if (!diver.TryAlignBodyToView(out int version)) { StopArmFollowing(); return; }
             feedingAlignment = StartCoroutine(WaitForFeedingAlignment(diver,version));
             return;
         }
@@ -272,7 +280,7 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
             yield return null;
         feedingAlignment = null;
         if (!isActiveAndEnabled || !diver || !diver.isActiveAndEnabled || diver.AlignmentVersion != version ||
-            DiverStartupGate.IsBlocked(gameObject.scene)) yield break;
+            DiverStartupGate.IsBlocked(gameObject.scene)) { StopArmFollowing(); yield break; }
         if (diver.ViewCamera) viewCamera = diver.ViewCamera;
         if (pose) pose.SetTargetCamera(viewCamera);
         BeginFeedingPresentation();
@@ -296,6 +304,7 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
         trayRoot.position = viewCamera.transform.position + horizontalView * trayCameraOffset;
         trayRoot.rotation = Quaternion.identity;
         trayRoot.gameObject.SetActive(true);
+        food.transform.SetParent(trayRoot,true);
         food.transform.localPosition = new Vector3(0f, 0.055f, 0f);
         food.SetActive(true);
         interaction.Configure(handTarget,food.transform,trayRoot,viewCamera);
@@ -352,6 +361,8 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
 
     private void StopArmFollowing()
     {
+        if (feedingView) feedingView.SetFeedingControlLock(false);
+        feedingView = null;
         if (armFollowing && armRig != null)
         {
             armRig.RestoreLocalPose();
@@ -409,7 +420,10 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null) return;
         if (keyboard.fKey.wasPressedThisFrame && !trayRoot.gameObject.activeSelf && feedingAlignment == null)
+        {
+            DiverAudioController.PlayRecognition(gameObject.scene);
             EnterFeedingWait();
+        }
         if (keyboard.backspaceKey.wasPressedThisFrame)
         {
             CancelFeedingAlignment();
@@ -431,6 +445,8 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
 
     private void DisperseFood()
     {
+        if(dispersed)return;
+        DiverAudioController.PlayFeeding(gameObject.scene);
         CancelFishFeeding();
         dispersed = true;
         food.SetActive(false);

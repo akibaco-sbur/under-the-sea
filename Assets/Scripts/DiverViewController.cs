@@ -21,6 +21,13 @@ public sealed class DiverViewController : MonoBehaviour
     public Vector3 BodyForward => bodyRoot ? Vector3.ProjectOnPlane(bodyRoot.rotation * bodyForwardInRoot, Vector3.up).normalized : transform.forward;
     public bool IsAligningToView => aligningToView;
     public int AlignmentVersion => alignmentVersion;
+    public bool IsFeedingControlLocked { get; private set; }
+    public void SetFeedingControlLock(bool value)
+    {
+        IsFeedingControlLocked = value;
+        if (value) movingSteering = false;
+    }
+    private bool ManualViewBlocked => IsFeedingControlLocked || DiverStartupGate.IsBlocked(gameObject.scene);
     [Tooltip("View camera offset in Face bone local coordinates. Positive Z moves the camera toward the face's forward direction.")]
     [SerializeField] private Vector3 viewCameraPositionOffset = new Vector3(0f, 0f, 0.1f);
 
@@ -70,6 +77,8 @@ public sealed class DiverViewController : MonoBehaviour
 
     private void Awake()
     {
+        if(gameObject.scene.name=="Main" && !GetComponent<DiverAnimationController>())
+            gameObject.AddComponent<DiverAnimationController>();
         ResolveBodyRoot();
         faceFollowsSpine005 = faceBone != null && spine005Bone != null &&
                               (faceBone == spine005Bone || faceBone.IsChildOf(spine005Bone));
@@ -106,7 +115,7 @@ public sealed class DiverViewController : MonoBehaviour
     /// <summary>Turns the body toward the current horizontal view direction and recenters pitch/yaw.</summary>
     public void RecenterVerticalView()
     {
-        if (DiverStartupGate.IsBlocked(gameObject.scene)) return;
+        if (ManualViewBlocked) return;
         InterruptActionAlignment();
         targetPitch = 0f;
         pitchSmoothVelocity = 0f;
@@ -115,6 +124,7 @@ public sealed class DiverViewController : MonoBehaviour
     /// <summary>Turns the body toward the current horizontal view direction and recenters pitch/yaw.</summary>
     public void AlignBodyToView()
     {
+        if (ManualViewBlocked) return;
         TryAlignBodyToView(out _);
     }
 
@@ -224,9 +234,9 @@ public sealed class DiverViewController : MonoBehaviour
     }
 
     // Positive local X rotates Unity's +Z forward vector downward.
-    public void LookUp() { if (!DiverStartupGate.IsBlocked(gameObject.scene)) { InterruptActionAlignment(); targetPitch = Mathf.Clamp(targetPitch - verticalStep, -maxVerticalAngle, maxVerticalAngle); } }
+    public void LookUp() { if (!ManualViewBlocked) { InterruptActionAlignment(); targetPitch = Mathf.Clamp(targetPitch - verticalStep, -maxVerticalAngle, maxVerticalAngle); } }
 
-    public void LookDown() { if (!DiverStartupGate.IsBlocked(gameObject.scene)) { InterruptActionAlignment(); targetPitch = Mathf.Clamp(targetPitch + verticalStep, -maxVerticalAngle, maxVerticalAngle); } }
+    public void LookDown() { if (!ManualViewBlocked) { InterruptActionAlignment(); targetPitch = Mathf.Clamp(targetPitch + verticalStep, -maxVerticalAngle, maxVerticalAngle); } }
 
     public void LookRight() => LookHorizontal(horizontalStep);
 
@@ -234,7 +244,7 @@ public sealed class DiverViewController : MonoBehaviour
 
     private void LookHorizontal(float angle)
     {
-        if (DiverStartupGate.IsBlocked(gameObject.scene)) return;
+        if (ManualViewBlocked) return;
         InterruptActionAlignment();
         if (!movingSteering)
         { targetYaw = Mathf.Clamp(targetYaw + angle, -maxHorizontalAngle, maxHorizontalAngle); return; }
@@ -246,7 +256,7 @@ public sealed class DiverViewController : MonoBehaviour
 
     public void TurnAround()
     {
-        if (DiverStartupGate.IsBlocked(gameObject.scene)) return;
+        if (ManualViewBlocked) return;
         InterruptActionAlignment();
         targetPitch = 0f;
         targetYaw = 0f;
@@ -265,6 +275,7 @@ public sealed class DiverViewController : MonoBehaviour
 
     public void ResetView()
     {
+        if (ManualViewBlocked) return;
         InterruptActionAlignment();
         targetPitch = 0f;
         targetYaw = 0f;
@@ -281,6 +292,7 @@ public sealed class DiverViewController : MonoBehaviour
     }
     private void OnDisable()
     {
+        IsFeedingControlLocked = false;
         InterruptActionAlignment();
         bodyTurning = false;
     }

@@ -22,6 +22,10 @@ public sealed class DiverPathGraphic : MaskableGraphic
             if(i==full)b=Vector2.Lerp(a,b,end-full);
             if((b-a).sqrMagnitude<.001f)continue;
             Vector2 n=new Vector2(-(b-a).y,(b-a).x).normalized*2f;
+            Color glow=color;glow.a*=.12f;
+            Quad(vh,a-n*3,a+n*3,b+n*3,b-n*3,glow);
+            glow.a=color.a*.2f;
+            Quad(vh,a-n*1.8f,a+n*1.8f,b+n*1.8f,b-n*1.8f,glow);
             Quad(vh,a-n,a+n,b+n,b-n,color);
         }
         Mark(vh,Position(points[0]),new Color(.2f,.7f,.95f),5);

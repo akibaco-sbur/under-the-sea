@@ -249,6 +249,7 @@ public sealed class DiverMovementController : MonoBehaviour
     public void MoveForward()
     {
         if (DiverStartupGate.IsBlocked(gameObject.scene)) return;
+        if (viewController && viewController.IsFeedingControlLocked) return;
         if (moving || pendingForward) return;
         obstacleBraking = false;
         obstacleWarningUntil = 0f;

@@ -12,6 +12,8 @@ public sealed class DiverRetreatController : MonoBehaviour
     [SerializeField, Min(1f)] float replaySeconds=8f;
     [SerializeField, InspectorName("軌跡の範囲（省略時はSeabedを検索）")] Transform seaBed;
     readonly DiverPathRecording path=new DiverPathRecording();
+    readonly WindowsSessionClock sessionClock=new WindowsSessionClock();
+    public double ExperienceSeconds => sessionClock.Elapsed(System.DateTimeOffset.Now).TotalSeconds;
     public double TravelDistance => path.Distance;
     DiverViewController diver;
     DiverHudController hud;
@@ -20,9 +22,10 @@ public sealed class DiverRetreatController : MonoBehaviour
     Image shade;
     Text status;
     Font font;
-    bool ownsFont, started, retreating, reviewing;
-    float startedAt, nextSample, replayTime, nextFind;
+    bool ownsFont, retreating, reviewing;
+    float nextSample, replayTime, nextFind;
     DiverPathGraphic line;
+    RectTransform replayProgress;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Install()
@@ -44,6 +47,18 @@ public sealed class DiverRetreatController : MonoBehaviour
         var controller=Ensure(scene);
         if(controller)controller.BeginRetreat();
     }
+    public static void StartSession(Scene scene)
+    {
+        var controller=Ensure(scene);
+        if(controller)controller.EnsureSessionStarted();
+    }
+    void EnsureSessionStarted()
+    {
+        if(sessionClock.HasStarted)return;
+        sessionClock.Begin(System.DateTimeOffset.Now);
+        DiverAudioController.BeginExperience(gameObject.scene);
+        Debug.Log("[Session] Windows start time: "+sessionClock.StartedAt.ToString("O"),this);
+    }
     T FindSource<T>() where T:Component
     {
         foreach(var c in FindObjectsByType<T>(FindObjectsSortMode.None))if(c.gameObject.scene==gameObject.scene)return c;
@@ -61,11 +76,12 @@ public sealed class DiverRetreatController : MonoBehaviour
             if(Keyboard.current!=null && Keyboard.current.spaceKey.wasPressedThisFrame)replayTime=0;
             replayTime+=Time.unscaledDeltaTime;
             float p=Mathf.Clamp01(replayTime/Mathf.Max(1,replaySeconds));line.SetProgress(p);
-            status.text=p<1?"ROUTE PLAYBACK  /  "+Mathf.RoundToInt(p*100)+"%":"ROUTE COMPLETE  /  SPACE：もう一度再生";
+            if(replayProgress)replayProgress.anchorMax=new Vector2(p,1);
+            status.text=p<1?"RECONSTRUCTING ROUTE  //  "+Mathf.RoundToInt(p*100)+"%":"RECONSTRUCTION COMPLETE";
             return;
         }
         if(retreating || DiverStartupGate.IsBlocked(gameObject.scene) || !diver || !diver.BodyRoot)return;
-        if(!started) { started=true; startedAt=Time.unscaledTime; }
+        EnsureSessionStarted();
         if(Time.unscaledTime>=nextSample) { Sample(); nextSample=Time.unscaledTime+.2f; }
     }
     void Sample(bool final=false)
@@ -80,7 +96,10 @@ public sealed class DiverRetreatController : MonoBehaviour
         if(!diver || !diver.BodyRoot) { Debug.LogWarning("[Retreat] No diver body found.",this); return; }
         var position=diver.BodyRoot.position;
         if(!float.IsFinite(position.x)||!float.IsFinite(position.y)||!float.IsFinite(position.z))return;
-        if(!started) {started=true;startedAt=Time.unscaledTime;}
+        EnsureSessionStarted();
+        sessionClock.End(System.DateTimeOffset.Now);
+        DiverAudioController.EndExperience(gameObject.scene);
+        Debug.Log("[Session] Windows end time: "+sessionClock.EndedAt.ToString("O")+"; duration="+ExperienceSeconds.ToString("F3")+" s.",this);
         Sample(true);
         retreating=true;
         DiverStartupGate.Begin(gameObject.scene);
@@ -91,7 +110,7 @@ public sealed class DiverRetreatController : MonoBehaviour
             if(voice.gameObject.scene==gameObject.scene)voice.enabled=false;
         hud=FindSource<DiverHudController>();
         BuildOverlay();
-        StartCoroutine(ShutdownAndReview(Time.unscaledTime-startedAt));
+        StartCoroutine(ShutdownAndReview());
         Debug.Log("[Retreat] Shutdown started. Path samples="+path.Points.Count,this);
     }
     void BuildOverlay()
@@ -106,7 +125,7 @@ public sealed class DiverRetreatController : MonoBehaviour
         shade=FullRect("Blackout",root.transform).gameObject.AddComponent<Image>();shade.color=Color.clear;shade.raycastTarget=false;
         status=Label("ROBOT SHUTDOWN",new Vector2(.08f,.43f),new Vector2(.92f,.57f),32);
     }
-    IEnumerator ShutdownAndReview(float duration)
+    IEnumerator ShutdownAndReview()
     {
         float elapsed=0;
         while(elapsed<Mathf.Max(.5f,shutdownSeconds))
@@ -121,12 +140,13 @@ public sealed class DiverRetreatController : MonoBehaviour
         var bounds=SeaBedBounds();
         float width=Mathf.Max(.01f,bounds.size.x), height=Mathf.Max(.01f,bounds.size.z);
         shade.color=new Color(.012f,.025f,.04f,1);
-        RectTransform area=FullRect("RouteArea",canvas.transform);area.anchorMin=new Vector2(.08f,.20f);area.anchorMax=new Vector2(.92f,.82f);
+        float gridStep = DiverRouteGrid.Step(width,height);
+        replayProgress=DiverRouteReviewSkin.Build(canvas.transform,font,sessionClock,path.Distance,path.Points.Count,bounds,gridStep);
+        RectTransform area=FullRect("RouteArea",canvas.transform);area.anchorMin=new Vector2(.27f,.23f);area.anchorMax=new Vector2(.73f,.83f);
         RectTransform panel=FullRect("SeaBedBoundary",area);
         var fit=panel.gameObject.AddComponent<AspectRatioFitter>();fit.aspectMode=AspectRatioFitter.AspectMode.FitInParent;fit.aspectRatio=width/height;
         var background=panel.gameObject.AddComponent<Image>();background.color=Color.white;background.raycastTarget=false;
         panel.gameObject.AddComponent<RectMask2D>();
-        float gridStep = DiverRouteGrid.Step(width,height);
         BuildGrid(panel,width,height,gridStep);
         line=FullRect("RecordedRoute",panel).gameObject.AddComponent<DiverPathGraphic>();line.color=new Color(.15f,.67f,.9f);line.raycastTarget=false;
         var projected=new Vector2[path.Points.Count];
@@ -136,10 +156,8 @@ public sealed class DiverRetreatController : MonoBehaviour
         DrawBorder(panel, new Vector2(0,1),new Vector2(1,1),new Vector2(0,2));
         DrawBorder(panel, new Vector2(0,0),new Vector2(0,1),new Vector2(2,0));
         DrawBorder(panel, new Vector2(1,0),new Vector2(1,1),new Vector2(2,0));
-        status.rectTransform.anchorMin=new Vector2(.08f,.04f);status.rectTransform.anchorMax=new Vector2(.92f,.13f);status.fontSize=24;
+        status.rectTransform.anchorMin=new Vector2(.27f,.08f);status.rectTransform.anchorMax=new Vector2(.73f,.15f);status.fontSize=20;
         status.transform.SetAsLastSibling();
-        Label("航行記録  /  SESSION ROUTE",new Vector2(.08f,.87f),new Vector2(.92f,.96f),34);
-        Label($"N ↑  ／  枠：SeaBed全体  {width:0.#} × {height:0.#} m  ／  1マス {gridStep:0.##} m\n移動距離 {path.Distance:F1} m    体験時間 {duration:F0} 秒",new Vector2(.08f,.105f),new Vector2(.92f,.19f),22);
         status.color=new Color(.5f,1,.95f);
         reviewing=true;replayTime=0;
         Debug.Log("[Retreat] Route review with distance grid ready. World bounds="+bounds,this);

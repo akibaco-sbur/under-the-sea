@@ -69,7 +69,6 @@ public sealed class DiverHudController : MonoBehaviour
     DiverViewController diverView;
     DiverRetreatController route;
     DiverKeyboardControls keyboardControls;
-    float operationStartedAt;
     bool shuttingDown;
     float shutdownProgress;
     public void SetShutdownProgress(float progress)
@@ -89,7 +88,7 @@ public sealed class DiverHudController : MonoBehaviour
     public void FinishRobotBoot()
     {
         boot = null;
-        operationStartedAt = Time.unscaledTime;
+        DiverRetreatController.StartSession(gameObject.scene);
         ApplyRobotBoot();
     }
     public void CancelRobotBoot() { boot = null; ApplyRobotBoot(); }
@@ -210,8 +209,8 @@ public sealed class DiverHudController : MonoBehaviour
         armLabel.text = feeding && feeding.IsKeyboardTest ? "キー試験入力" : handPose && handPose.IsTracked ? "腕を追跡中" : "腕の認識を待機中";
         armLabel.color = feeding && feeding.IsKeyboardTest ? muted : handPose && handPose.IsTracked ? cyan : amber;
         speedBar.rectTransform.sizeDelta = new Vector2(264f * (canMove ? movement.SpeedRatio : 0f), 3f);
-        int seconds = DiverStartupGate.IsBlocked(gameObject.scene) ? 0 : Mathf.Max(0, Mathf.FloorToInt(Time.unscaledTime - operationStartedAt));
-        uptimeLabel.text = "稼働時間  " + (seconds / 60).ToString("00") + ":" + (seconds % 60).ToString("00");
+        double seconds = route ? route.ExperienceSeconds : 0;
+        uptimeLabel.text = "体験時間  " + WindowsSessionClock.Format(System.TimeSpan.FromSeconds(seconds));
         bool active = feeding && feeding.IsFeedingActive;
         feedingPanel.gameObject.SetActive(active);
         normalHint.gameObject.SetActive(!active);
@@ -279,7 +278,7 @@ public sealed class DiverHudController : MonoBehaviour
         Label(attitude,"累計移動距離",13,new Vector2(18,-88),new Vector2(254,24),muted);
         depthLabel=Label(attitude,"0.0 m",21,new Vector2(18,-115),new Vector2(254,30),cyan);
         var uptime=Rect("Uptime",details,new Vector2(1,0),new Vector2(1,0),new Vector2(-44,90),new Vector2(290,30),new Vector2(1,0));
-        uptimeLabel=Label(uptime,"稼働時間  00:00",15,Vector2.zero,new Vector2(290,30),cyan);
+        uptimeLabel=Label(uptime,"体験時間  00:00",15,Vector2.zero,new Vector2(290,30),cyan);
         Box(right,"SpeedTrack",new Vector2(18,-117),new Vector2(264,3),new Color(cyan.r,cyan.g,cyan.b,.2f));
         speedBar=Box(right,"Speed",new Vector2(18,-117),new Vector2(0,3),cyan);
         feedingPanel = Panel("Feeding", new Vector2(.5f,0f), new Vector2(0f,56f), new Vector2(600f,150f));

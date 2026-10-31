@@ -276,6 +276,11 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         }
 
         Debug.Log($"[Vosk] Command matched: {command} (phrase=\"{recognizedText}\").", this);
+        if(command != Command.Retreat) DiverAnimationController.NotifyRecognizedCommand(gameObject.scene);
+        bool feedingAccepted = command != Command.Feeding ||
+            ((keyboardFeedingTestMode || !palmUpRequiredForFeeding || palmUp) &&
+             feedingFoodController != null && !feedingFoodController.IsFeedingActive);
+        if(feedingAccepted) DiverAudioController.PlayRecognition(gameObject.scene,command==Command.Stop || command==Command.Retreat);
 
         switch (command)
         {

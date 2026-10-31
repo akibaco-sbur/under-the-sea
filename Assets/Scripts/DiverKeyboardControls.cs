@@ -50,7 +50,14 @@ public sealed class DiverKeyboardControls : MonoBehaviour
         var keyboard = Keyboard.current;
         if (keyboard == null) return;
         if (keyboard.rKey.wasPressedThisFrame)
-        { DiverRetreatController.Request(gameObject.scene); return; }
+        { DiverAudioController.PlayRecognition(gameObject.scene,true); DiverRetreatController.Request(gameObject.scene); return; }
+        if(keyboard.upArrowKey.wasPressedThisFrame || keyboard.downArrowKey.wasPressedThisFrame ||
+           keyboard.leftArrowKey.wasPressedThisFrame || keyboard.rightArrowKey.wasPressedThisFrame ||
+           keyboard.bKey.wasPressedThisFrame || keyboard.iKey.wasPressedThisFrame || keyboard.spaceKey.wasPressedThisFrame)
+        {
+            DiverAudioController.PlayRecognition(gameObject.scene,keyboard.spaceKey.wasPressedThisFrame);
+            DiverAnimationController.NotifyRecognizedCommand(gameObject.scene);
+        }
         if (view && view.isActiveAndEnabled)
         {
             if (keyboard.bKey.wasPressedThisFrame) view.TurnAround();

@@ -276,11 +276,14 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
         if (logic.State == ScoopFeedingState.Held || logic.State == ScoopFeedingState.Offered)
         {
             if (logic.IsTracking)
+            {
+                if (hand != null && food.parent != hand) food.SetParent(hand, true);
                 food.position = handPosition + Vector3.up * 0.045f;
+            }
         }
         else
         {
-            food.position = bowl.TransformPoint(foodHomeLocal);
+            ReturnFoodHome();
         }
     }
 
@@ -288,7 +291,7 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
     {
         logic.ConsumeFood();
         if (food != null && bowl != null && logic.State == ScoopFeedingState.AwaitEntry)
-            food.position = bowl.TransformPoint(foodHomeLocal);
+            ReturnFoodHome();
     }
 
     /// <summary>Reset the in-progress scoop attempt and return food to the bowl.</summary>
@@ -297,6 +300,11 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
         logic.Reset();
         IsTouchingFood = false;
         if (food != null && bowl != null)
-            food.position = bowl.TransformPoint(foodHomeLocal);
+            ReturnFoodHome();
+    }
+    private void ReturnFoodHome()
+    {
+        if (food.parent != bowl) food.SetParent(bowl,true);
+        food.position = bowl.TransformPoint(foodHomeLocal);
     }
 }

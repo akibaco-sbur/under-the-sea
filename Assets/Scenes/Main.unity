@@ -9290,6 +9290,8 @@ MonoBehaviour:
   useBodyCenterForObstacles: 1
   obstacleProbeRadius: 0.25
   addMissingRockColliders: 1
+  autoRetreatAtBorder: 1
+  borderIdleRetreatSeconds: 10
   rootBone: {fileID: 1911905570}
   spine005Bone: {fileID: 1198232704}
   viewController: {fileID: 2048562561}

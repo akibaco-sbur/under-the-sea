@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 /// <summary>Reuses bounded decorative windows and one noise material; no input interception or per-frame objects.</summary>
 internal sealed class DiverBorderInterference : IDisposable
@@ -14,9 +15,11 @@ internal sealed class DiverBorderInterference : IDisposable
     readonly System.Random placement=new System.Random(Guid.NewGuid().GetHashCode());
     readonly Material noiseMaterial;
     readonly Font font;
+    readonly Scene scene;
     public DiverBorderInterference(Transform parent,Font font)
     {
         this.font=font;
+        scene=parent.gameObject.scene;
         var rect=Rect("BorderSignalInterference",parent,Vector2.zero,Vector2.one,Vector2.zero,Vector2.zero,new Vector2(.5f,.5f));
         root=rect.gameObject;
         var group=root.AddComponent<CanvasGroup>();group.interactable=false;group.blocksRaycasts=false;
@@ -37,6 +40,7 @@ internal sealed class DiverBorderInterference : IDisposable
     public void Tick(float target,float dt)
     {
         state.Tick(target,dt);
+        DiverAudioController.SetNoiseLevel(scene,state.Strength);
         root.SetActive(state.Strength>.001f);
         if(noiseMaterial){noiseMaterial.SetFloat("_Strength",state.Strength);noiseMaterial.SetFloat("_Phase",state.NoiseSeed);noiseMaterial.SetFloat("_Burst",state.NoiseBurst);}
         for(int i=0;i<popups.Length;i++)
@@ -44,6 +48,7 @@ internal sealed class DiverBorderInterference : IDisposable
             bool show=i<state.PopupCount;
             if(show&&!popups[i].activeSelf)
             {
+                DiverAudioController.PlayPopup(scene);
                 var rect=(RectTransform)popups[i].transform;
                 rect.anchorMin=rect.anchorMax=NextPosition();
             }
@@ -60,6 +65,7 @@ internal sealed class DiverBorderInterference : IDisposable
     public void Reset()
     {
         state.Reset();if(root)root.SetActive(false);
+        DiverAudioController.SetNoiseLevel(scene,0);
         for(int i=0;i<gauges.Count;i++)if(gauges[i])gauges[i].anchoredPosition=home[i];
     }
     public void Dispose(){Reset();if(noiseMaterial)UnityEngine.Object.Destroy(noiseMaterial);if(root)UnityEngine.Object.Destroy(root);}
