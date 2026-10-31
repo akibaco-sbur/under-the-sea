@@ -18,6 +18,8 @@ public sealed class KinectScoopPose : MonoBehaviour
     public Vector3 ElbowPosition { get; private set; }
     public Vector3 ShoulderPosition { get; private set; }
     public Vector3 ForearmDirection { get; private set; }
+    public Quaternion HandRotation { get; private set; } = Quaternion.identity;
+    public bool HasHandOrientation { get; private set; }
     public string TrackingMessage { get; private set; } = "Waiting for body";
     public uint BodyId { get; private set; }
 
@@ -32,6 +34,8 @@ public sealed class KinectScoopPose : MonoBehaviour
         if (skeleton == null) skeleton = GetComponent<AzureKinectSkeletonView>();
         if (targetCamera == null) targetCamera = Camera.main;
     }
+
+    public void SetTargetCamera(Camera camera) { if (camera) targetCamera = camera; }
 
     private void Update()
     {
@@ -96,10 +100,14 @@ public sealed class KinectScoopPose : MonoBehaviour
         ElbowPosition = cameraTransform.TransformPoint(chestOffset + pose.Elbow);
         ShoulderPosition = cameraTransform.TransformPoint(chestOffset + pose.Shoulder);
         ForearmDirection = cameraTransform.TransformDirection(pose.ForearmDirection).normalized;
+        HasHandOrientation = pose.HasHandOrientation;
+        if (HasHandOrientation)
+            HandRotation = cameraTransform.rotation * pose.HandRotation;
     }
 
     private static KinectScoopSolver.JointSample Sample(AzureKinectNative.Joint joint) =>
-        new KinectScoopSolver.JointSample(new Vector3(joint.X, joint.Y, joint.Z) * 0.001f, joint.Confidence);
+        new KinectScoopSolver.JointSample(new Vector3(joint.X, joint.Y, joint.Z) * 0.001f,
+            joint.Confidence, new Quaternion(joint.Qx, joint.Qy, joint.Qz, joint.Qw));
 
     private void LosePose(string message)
     {
@@ -108,6 +116,15 @@ public sealed class KinectScoopPose : MonoBehaviour
         TrackingMessage = message;
         lastSampleTime = 0f;
         solver.Reset();
+    }
+
+    /// <summary>Release the selected body so a new participant can be selected.</summary>
+    public void SelectBody(uint id)
+    {
+        ResetTracking();
+        BodyId = id;
+        hasBody = true;
+        lastSeenBodyTime = Time.unscaledTime;
     }
 
     /// <summary>Release the selected body so a new participant can be selected.</summary>
@@ -130,7 +147,23 @@ public sealed class KinectScoopSolver
     {
         public Vector3 Position;
         public int Confidence;
-        public JointSample(Vector3 position, int confidence) { Position = position; Confidence = confidence; }
+        public Quaternion Rotation;
+        public bool HasRotation;
+        public JointSample(Vector3 position, int confidence)
+        {
+            Position = position;
+            Confidence = confidence;
+            Rotation = Quaternion.identity;
+            HasRotation = false;
+        }
+        public JointSample(Vector3 position, int confidence, Quaternion rotation)
+        {
+            Position = position;
+            Confidence = confidence;
+            float norm = Mathf.Sqrt(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z + rotation.w * rotation.w);
+            HasRotation = float.IsFinite(norm) && norm > 0.0001f;
+            Rotation = HasRotation ? new Quaternion(rotation.x / norm, rotation.y / norm, rotation.z / norm, rotation.w / norm) : Quaternion.identity;
+        }
     }
 
     public struct Input { public JointSample Chest, Shoulder, Elbow, Wrist, Hand; }
@@ -138,7 +171,8 @@ public sealed class KinectScoopSolver
     {
         // Camera-local metres relative to the chest, with camera-facing axis conversion applied.
         public Vector3 Shoulder, Elbow, Wrist, Hand, ForearmDirection;
-        public bool IsEstimated;
+        public bool IsEstimated, HasHandOrientation;
+        public Quaternion HandRotation;
     }
 
     public float HandExtension { get; set; } = 0.09f;
@@ -190,7 +224,8 @@ public sealed class KinectScoopSolver
         Vector3 chest = input.Chest.Position;
         output = new Output { Shoulder = ToCamera(input.Shoulder.Position - chest), Elbow = ToCamera(input.Elbow.Position - chest),
             Wrist = ToCamera(input.Wrist.Position - chest), Hand = ToCamera(hand - chest),
-            ForearmDirection = ToCamera(direction), IsEstimated = !measured };
+            ForearmDirection = ToCamera(direction), IsEstimated = !measured,
+            HandRotation = input.Hand.Rotation, HasHandOrientation = input.Hand.HasRotation };
         if (initialized && dt > 0f)
         {
             float seconds = float.IsFinite(SmoothingSeconds) ? Mathf.Max(0.01f, SmoothingSeconds) : 0.10f;
@@ -199,6 +234,8 @@ public sealed class KinectScoopSolver
             output.Elbow = Vector3.Lerp(previous.Elbow, output.Elbow, alpha);
             output.Wrist = Vector3.Lerp(previous.Wrist, output.Wrist, alpha);
             output.Hand = Vector3.Lerp(previous.Hand, output.Hand, alpha);
+            if (output.HasHandOrientation && previous.HasHandOrientation)
+                output.HandRotation = Quaternion.Slerp(previous.HandRotation, output.HandRotation, alpha);
             Vector3 smoothedDirection = output.Wrist - output.Elbow;
             if (smoothedDirection.sqrMagnitude > 1e-8f) output.ForearmDirection = smoothedDirection.normalized;
         }

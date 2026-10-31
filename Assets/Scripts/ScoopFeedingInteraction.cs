@@ -29,6 +29,8 @@ public sealed class ScoopFeedingLogic
     public ScoopFeedingState State { get; private set; } = ScoopFeedingState.AwaitEntry;
     public bool IsTracking { get; private set; }
     public bool FoodAvailableToFish => IsTracking && State == ScoopFeedingState.Offered;
+    public bool IsOffering => IsTracking && (State == ScoopFeedingState.Offered ||
+        (State == ScoopFeedingState.Held && offerElapsed > 0f));
     public float LiftProgress => State == ScoopFeedingState.Armed ? liftProgress : 0f;
     public float OfferProgress => State == ScoopFeedingState.Offered ? 1f :
         State == ScoopFeedingState.Held ? Mathf.Clamp01(offerElapsed / OfferSeconds) : 0f;
@@ -201,6 +203,7 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
     public ScoopFeedingState State => logic.State;
     public string Guide => logic.Guide;
     public bool FoodAvailableToFish => logic.FoodAvailableToFish;
+    public bool IsOffering => logic.IsOffering;
     public float OfferProgress => logic.OfferProgress;
     public float LiftProgress => logic.LiftProgress;
     public bool IsTouchingFood { get; private set; }
@@ -273,11 +276,14 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
         if (logic.State == ScoopFeedingState.Held || logic.State == ScoopFeedingState.Offered)
         {
             if (logic.IsTracking)
+            {
+                if (hand != null && food.parent != hand) food.SetParent(hand, true);
                 food.position = handPosition + Vector3.up * 0.045f;
+            }
         }
         else
         {
-            food.position = bowl.TransformPoint(foodHomeLocal);
+            ReturnFoodHome();
         }
     }
 
@@ -285,6 +291,20 @@ public sealed class ScoopFeedingInteraction : MonoBehaviour
     {
         logic.ConsumeFood();
         if (food != null && bowl != null && logic.State == ScoopFeedingState.AwaitEntry)
-            food.position = bowl.TransformPoint(foodHomeLocal);
+            ReturnFoodHome();
+    }
+
+    /// <summary>Reset the in-progress scoop attempt and return food to the bowl.</summary>
+    public void ResetInteraction()
+    {
+        logic.Reset();
+        IsTouchingFood = false;
+        if (food != null && bowl != null)
+            ReturnFoodHome();
+    }
+    private void ReturnFoodHome()
+    {
+        if (food.parent != bowl) food.SetParent(bowl,true);
+        food.position = bowl.TransformPoint(foodHomeLocal);
     }
 }

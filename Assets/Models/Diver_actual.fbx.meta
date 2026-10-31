@@ -3,17 +3,7 @@ guid: a6ce2356da7a4e94090779b26e4b281c
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects:
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: Diver
-    second: {fileID: 2100000, guid: db67983fdd44e5f4db90ce2d04d07fab, type: 2}
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: transceiver
-    second: {fileID: 2100000, guid: d7f78d56caedc6e4a8ab40ffb4be0f64, type: 2}
+  externalObjects: {}
   materials:
     materialImportMode: 2
     materialName: 0

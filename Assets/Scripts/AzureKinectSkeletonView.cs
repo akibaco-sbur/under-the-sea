@@ -48,6 +48,13 @@ public sealed class AzureKinectSkeletonView : MonoBehaviour
     private bool IsFresh(AzureKinectCapture.Snapshot snapshot) => snapshot != null && (Stopwatch.GetTimestamp() - snapshot.ReceivedTicks) / (double)Stopwatch.Frequency < staleSeconds;
     internal AzureKinectCapture.Snapshot LatestSnapshot { get { var snapshot = capture?.Latest; return IsFresh(snapshot) ? snapshot : null; } }
 
+    /// <summary>Configure whether this tracker draws its diagnostic skeleton and status overlay.</summary>
+    public void SetDebugVisualization(bool drawSkeleton, bool drawStatusOverlay)
+    {
+        renderSkeleton = drawSkeleton;
+        showStatusOverlay = drawStatusOverlay;
+    }
+
     private void Update()
     {
         var snapshot = capture?.Latest;

@@ -3,7 +3,12 @@ guid: 1705eb7d1376d604fa49cf3c0bf7ba63
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: PufferFish
+    second: {fileID: 2100000, guid: 4e00a9841539c4e48aad8aa44c54d512, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

@@ -1,16 +1,24 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>First-person presentation for the separate scooping sandbox.</summary>
+[DefaultExecutionOrder(-10000)]
 public sealed class KinectScoopSandbox : MonoBehaviour
 {
     [SerializeField] private KinectScoopPose pose;
     [SerializeField] private Camera diverCamera;
     [SerializeField] private ScoopFeedingInteraction interaction;
+    [SerializeField] private KinectArmRigFollower armRig;
     [SerializeField] private Transform handCenter, handWrist, upperArm, forearm, bowl, food;
     [SerializeField] private Transform[] fish, tails;
     [SerializeField] private TextMeshProUGUI guide, status, progressText;
     [SerializeField] private UnityEngine.UI.Image progressFill;
+    [Header("Keyboard test input (Kinect is disabled while enabled)")]
+    [SerializeField] private bool keyboardTestMode = true;
+    [SerializeField, Min(0.01f)] private float keyboardHandSpeed = 0.35f;
+    [SerializeField, Min(1f)] private float keyboardFastMultiplier = 2.5f;
+    [SerializeField] private Vector3 keyboardStartHandLocal = new Vector3(0.28f, -0.30f, 0.48f);
     [Header("Feeding visuals")]
     [SerializeField] private Color[] foodColorPalette =
     {
@@ -19,13 +27,9 @@ public sealed class KinectScoopSandbox : MonoBehaviour
         new Color(0.32f, 1f, 0.28f),
         new Color(0.8f, 0.25f, 1f)
     };
-    [SerializeField, Min(1f)] private float foodParticlesPerSecond = 36f;
-    [SerializeField, Min(0.1f)] private float foodParticleLifetime = 3f;
-    [SerializeField, Min(0.001f)] private float foodParticleSize = 0.035f;
-    [SerializeField, Range(0.01f, 0.3f)] private float foodCloudSpread = 0.07f;
     private TMP_FontAsset runtimeFont;
     private Vector3[] swimmingCenters;
-    private Vector3 lastHand, lastElbow, lastWrist;
+    private Vector3 lastHand, lastElbow, lastWrist, lastShoulder;
     private bool hasPose;
     private float swimTime;
     private int meals;
@@ -37,20 +41,45 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     private MaterialPropertyBlock fishProperties;
     private Vector3 foodRestScale;
     private Color currentFoodColor;
-    private float particleRemainder;
-    private ParticleSystem foodParticles;
-    private Material foodParticleMaterial;
+    private int feedingTargetIndex = -1;
+    private int nextFeedingFishIndex;
 
-    // Only for deterministic Editor checks. Live input is always the default.
+    // Settable by deterministic Editor checks; manual keyboard input is controlled separately.
     public bool DiagnosticInput { get; set; }
     public Vector3 DiagnosticHandLocal { get; set; } = new Vector3(0.5f, -0.25f, 0.5f);
     public bool DiagnosticTracked { get; set; } = true;
     public ScoopFeedingInteraction Interaction => interaction;
     public int Meals => meals;
 
+    private void OnEnable()
+    {
+        if (!keyboardTestMode || pose == null)
+            return;
+
+        // This component runs before AzureKinectSkeletonView.OnEnable. Disabling
+        // it here prevents loading the native SDK or initializing the sensor.
+        AzureKinectSkeletonView skeleton = pose.GetComponent<AzureKinectSkeletonView>();
+        if (skeleton != null)
+            skeleton.enabled = false;
+    }
+
     private void Start()
     {
+        if (keyboardTestMode)
+        {
+            DiagnosticInput = true;
+            DiagnosticTracked = true;
+            DiagnosticHandLocal = keyboardStartHandLocal;
+        }
         interaction.Configure(handCenter, food, bowl, diverCamera);
+        if (armRig != null && armRig.IsReady)
+        {
+            armRig.SetTargetCamera(diverCamera.transform);
+            SetVisible(upperArm, false);
+            SetVisible(forearm, false);
+        }
+        else if (armRig != null)
+            Debug.LogWarning("KinectArmRigFollower could not find upper_arm.R, forearm.R and hand.R. Using the sandbox arm display instead.", armRig);
         foodRestScale = food.localScale;
         foodRenderer = food.GetComponent<Renderer>();
         if (foodRenderer == null) foodRenderer = food.GetComponentInChildren<Renderer>();
@@ -63,7 +92,6 @@ public sealed class KinectScoopSandbox : MonoBehaviour
             if (fishBodyRenderers[i] == null && fish[i] != null)
                 fishBodyRenderers[i] = fish[i].GetComponentInChildren<Renderer>();
         }
-        CreateFoodParticles();
         EnterFeedingWait();
         bowlRim = bowl.Find("Rim")?.GetComponent<Renderer>();
         rimProperties = new MaterialPropertyBlock();
@@ -78,6 +106,7 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     private void SetRestPose()
     {
         var cameraTransform = diverCamera.transform;
+        lastShoulder = cameraTransform.TransformPoint(new Vector3(0.29f, -0.32f, -0.14f));
         lastHand = cameraTransform.TransformPoint(new Vector3(0.40f, -0.24f, 0.55f));
         lastWrist = cameraTransform.TransformPoint(new Vector3(0.42f, -0.27f, 0.46f));
         lastElbow = cameraTransform.TransformPoint(new Vector3(0.48f, -0.43f, 0.10f));
@@ -87,11 +116,16 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     private void LateUpdate()
     {
         float dt = Mathf.Min(Time.deltaTime, 0.08f);
-        bool tracked = DiagnosticInput ? DiagnosticTracked : pose != null && pose.IsTracked;
+        if (keyboardTestMode)
+            UpdateKeyboardHand(Time.unscaledDeltaTime);
+
+        bool usingDiagnosticInput = DiagnosticInput || keyboardTestMode;
+        bool tracked = usingDiagnosticInput ? DiagnosticTracked : pose != null && pose.IsTracked;
         if (tracked)
         {
-            if (DiagnosticInput)
+            if (usingDiagnosticInput)
             {
+                lastShoulder = diverCamera.transform.TransformPoint(new Vector3(0.29f, -0.32f, -0.14f));
                 lastHand = diverCamera.transform.TransformPoint(DiagnosticHandLocal);
                 lastElbow = diverCamera.transform.TransformPoint(new Vector3(0.43f, -0.42f, 0.08f));
                 lastWrist = lastHand - (lastHand - lastElbow).normalized * 0.09f;
@@ -101,12 +135,21 @@ public sealed class KinectScoopSandbox : MonoBehaviour
                 lastHand = pose.HandPosition;
                 lastWrist = pose.WristPosition;
                 lastElbow = pose.ElbowPosition;
+                lastShoulder = pose.ShoulderPosition;
             }
             hasPose = true;
         }
         DrawArm();
+        if (armRig != null && armRig.IsReady)
+        {
+            Vector3 handForward = lastWrist - lastElbow;
+            Quaternion handRotation = usingDiagnosticInput
+                ? Quaternion.LookRotation(handForward.sqrMagnitude > 1e-6f ? handForward.normalized : diverCamera.transform.forward, Vector3.up)
+                : pose != null ? pose.HandRotation : Quaternion.identity;
+            bool hasHandOrientation = usingDiagnosticInput || (pose != null && pose.HasHandOrientation);
+            armRig.ApplyPose(lastShoulder, lastElbow, lastWrist, handRotation, hasHandOrientation, tracked, dt);
+        }
         interaction.Tick(lastHand, tracked, dt);
-        UpdateFoodDispersion(dt);
         Swim(dt);
         if (bowlRim != null)
         {
@@ -116,6 +159,7 @@ public sealed class KinectScoopSandbox : MonoBehaviour
         }
         guide.text = interaction.Guide;
         if (!tracked) status.text = hasPose ? "追跡を待っています • 餌はそのまま" : "Kinectの前で右腕を動かしてください";
+        else if (keyboardTestMode) status.text = "キーボード操作中  WASD:前後左右  Q/E:上下  F:餌色  Backspace:リセット";
         else if (DiagnosticInput) status.text = "動作確認用の入力";
         else status.text = pose.IsEstimated ? "右手 • 肘と手首から補完" : "右手 • 骨格に追従";
         progressFill.fillAmount = interaction.OfferProgress;
@@ -140,8 +184,48 @@ public sealed class KinectScoopSandbox : MonoBehaviour
         if (up.sqrMagnitude < 0.001f) up = Vector3.ProjectOnPlane(-diverCamera.transform.forward, direction);
         handCenter.position = lastHand;
         handWrist.SetPositionAndRotation(lastHand - direction * 0.075f, Quaternion.LookRotation(direction, up.normalized));
-        Segment(upperArm, shoulder, lastElbow, 0.085f);
-        Segment(forearm, lastElbow, handWrist.position, 0.066f);
+        if (armRig == null || !armRig.IsReady)
+        {
+            Segment(upperArm, shoulder, lastElbow, 0.085f);
+            Segment(forearm, lastElbow, handWrist.position, 0.066f);
+        }
+    }
+
+    private static void SetVisible(Transform target, bool visible)
+    {
+        if (target == null) return;
+        foreach (Renderer renderer in target.GetComponentsInChildren<Renderer>())
+            renderer.enabled = visible;
+    }
+
+    private void UpdateKeyboardHand(float dt)
+    {
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard == null)
+            return;
+
+        if (keyboard.backspaceKey.wasPressedThisFrame)
+        {
+            DiagnosticHandLocal = keyboardStartHandLocal;
+            interaction.ResetInteraction();
+            EnterFeedingWait();
+        }
+        if (keyboard.fKey.wasPressedThisFrame && interaction.State == ScoopFeedingState.AwaitEntry)
+            EnterFeedingWait();
+
+        float x = (keyboard.dKey.isPressed ? 1f : 0f) - (keyboard.aKey.isPressed ? 1f : 0f);
+        float y = (keyboard.eKey.isPressed ? 1f : 0f) - (keyboard.qKey.isPressed ? 1f : 0f);
+        float z = (keyboard.wKey.isPressed ? 1f : 0f) - (keyboard.sKey.isPressed ? 1f : 0f);
+        Vector3 input = new Vector3(x, y, z);
+        if (input.sqrMagnitude > 1f)
+            input.Normalize();
+
+        float speed = keyboardHandSpeed * (keyboard.leftShiftKey.isPressed ? keyboardFastMultiplier : 1f);
+        DiagnosticHandLocal += input * speed * Mathf.Max(0f, dt);
+        DiagnosticHandLocal = new Vector3(
+            Mathf.Clamp(DiagnosticHandLocal.x, 0.05f, 0.85f),
+            Mathf.Clamp(DiagnosticHandLocal.y, -0.65f, 0.25f),
+            Mathf.Clamp(DiagnosticHandLocal.z, 0.05f, 1.2f));
     }
 
     private static void Segment(Transform segment, Vector3 a, Vector3 b, float diameter)
@@ -156,22 +240,31 @@ public sealed class KinectScoopSandbox : MonoBehaviour
     {
         swimTime += dt;
         bool feeding = interaction.FoodAvailableToFish;
+        if (feeding && feedingTargetIndex < 0 && fish.Length > 0)
+            feedingTargetIndex = nextFeedingFishIndex % fish.Length;
+        else if (!feeding)
+            feedingTargetIndex = -1;
+
         for (int i = 0; i < fish.Length; i++)
         {
             float phase = swimTime * (0.28f + 0.03f * i) + i * 2.4f;
             Vector3 target = swimmingCenters[i] + new Vector3(Mathf.Sin(phase) * 0.8f, Mathf.Sin(phase * 1.7f) * 0.12f, Mathf.Cos(phase) * 0.45f);
-            if (feeding) target = interaction.FoodPosition + (i == 0 ? Vector3.forward * 0.04f : new Vector3(Mathf.Cos(phase) * 0.28f, 0.05f * i, Mathf.Sin(phase) * 0.25f));
+            bool approachingFood = feeding && i == feedingTargetIndex;
+            if (approachingFood) target = interaction.FoodPosition;
             Vector3 delta = target - fish[i].position;
             if (delta.sqrMagnitude > 0.0001f)
                 fish[i].rotation = Quaternion.RotateTowards(fish[i].rotation, Quaternion.LookRotation(delta, Vector3.up), dt * 150f);
-            fish[i].position = Vector3.MoveTowards(fish[i].position, target, dt * (feeding ? 0.58f : 0.20f));
+            fish[i].position = Vector3.MoveTowards(fish[i].position, target, dt * (approachingFood ? 0.58f : 0.20f));
             tails[i].localRotation = Quaternion.Euler(0f, Mathf.Sin(swimTime * 9f + i) * 24f, 0f);
         }
-        if (feeding && Vector3.Distance(fish[0].position, interaction.FoodPosition) < 0.13f)
+        if (feeding && feedingTargetIndex >= 0 &&
+            Vector3.Distance(fish[feedingTargetIndex].position, interaction.FoodPosition) < 0.13f)
         {
             interaction.ConsumeFood();
-            ApplyFoodColorToFish(fishBodyRenderers[0]);
+            ApplyFoodColorToFish(fishBodyRenderers[feedingTargetIndex]);
             meals++;
+            nextFeedingFishIndex = (feedingTargetIndex + 1) % fish.Length;
+            feedingTargetIndex = -1;
             EnterFeedingWait();
         }
     }
@@ -184,84 +277,9 @@ public sealed class KinectScoopSandbox : MonoBehaviour
         else
             currentFoodColor = foodColorPalette[Random.Range(0, foodColorPalette.Length)];
 
-        particleRemainder = 0f;
         if (food != null)
             food.localScale = foodRestScale;
         ApplyFoodColor(foodRenderer, currentFoodColor, foodProperties);
-    }
-
-    private void CreateFoodParticles()
-    {
-        var particleObject = new GameObject("Food Dispersion");
-        particleObject.transform.SetParent(transform, false);
-        foodParticles = particleObject.AddComponent<ParticleSystem>();
-
-        var main = foodParticles.main;
-        main.playOnAwake = false;
-        main.loop = true;
-        main.simulationSpace = ParticleSystemSimulationSpace.World;
-        main.startLifetime = foodParticleLifetime;
-        main.startSpeed = 0f;
-        main.startSize = foodParticleSize;
-        main.startColor = Color.white;
-        main.maxParticles = 1800;
-
-        var emission = foodParticles.emission;
-        emission.enabled = false;
-        var shape = foodParticles.shape;
-        shape.enabled = false;
-        var colorOverLifetime = foodParticles.colorOverLifetime;
-        colorOverLifetime.enabled = true;
-        var fade = new Gradient();
-        fade.SetKeys(
-            new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
-            new[] { new GradientAlphaKey(0.8f, 0f), new GradientAlphaKey(0f, 1f) });
-        colorOverLifetime.color = new ParticleSystem.MinMaxGradient(fade);
-
-        var particleRenderer = particleObject.GetComponent<ParticleSystemRenderer>();
-        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
-        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-        if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
-        if (shader != null)
-        {
-            foodParticleMaterial = new Material(shader);
-            if (foodParticleMaterial.HasProperty("_BaseColor")) foodParticleMaterial.SetColor("_BaseColor", Color.white);
-            if (foodParticleMaterial.HasProperty("_Color")) foodParticleMaterial.SetColor("_Color", Color.white);
-            particleRenderer.sharedMaterial = foodParticleMaterial;
-        }
-        foodParticles.Play();
-    }
-
-    private void UpdateFoodDispersion(float dt)
-    {
-        float progress = interaction.OfferProgress;
-        if (food != null)
-            food.localScale = foodRestScale * Mathf.Lerp(1f, 0.015f, progress);
-
-        if (foodParticles == null || progress <= 0f)
-            return;
-
-        float amount = foodParticlesPerSecond * dt + particleRemainder;
-        int count = Mathf.FloorToInt(amount);
-        particleRemainder = amount - count;
-        if (count <= 0)
-            return;
-
-        Vector3 source = interaction.FoodPosition;
-        Vector3 forward = diverCamera != null ? diverCamera.transform.forward : Vector3.forward;
-        Vector3 spreadAxis = (forward + Random.insideUnitSphere * 0.65f).normalized;
-        for (int i = 0; i < count; i++)
-        {
-            var emit = new ParticleSystem.EmitParams
-            {
-                position = source + Random.insideUnitSphere * foodCloudSpread,
-                velocity = spreadAxis * Random.Range(0.03f, 0.12f) + Random.insideUnitSphere * 0.035f,
-                startLifetime = foodParticleLifetime * Random.Range(0.75f, 1.3f),
-                startSize = foodParticleSize * Random.Range(0.65f, 1.35f),
-                startColor = currentFoodColor
-            };
-            foodParticles.Emit(emit, 1);
-        }
     }
 
     private static void ApplyFoodColor(Renderer target, Color color, MaterialPropertyBlock properties)
@@ -284,8 +302,6 @@ public sealed class KinectScoopSandbox : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (foodParticles != null) Destroy(foodParticles.gameObject);
-        if (foodParticleMaterial != null) Destroy(foodParticleMaterial);
         if (runtimeFont != null)
         {
             foreach (var texture in runtimeFont.atlasTextures) if (texture != null) Destroy(texture);

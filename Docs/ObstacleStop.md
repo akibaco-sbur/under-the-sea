@@ -1,0 +1,13 @@
+# 岩への衝突停止
+
+Mainの保存済みMossRockにはColliderのないものがあります。ColliderがなければPhysicsのレイ判定は通過するため、DiverMovementControllerの初期化時に、同シーンのMossRock配下のメッシュに不足しているColliderを補います。既存の有効な非Trigger Colliderがあれば追加しません。静的な岩には共有メッシュのMeshColliderを使用し、非Kinematic Rigidbody付きの場合だけBoxColliderを使用します。シーン・モデルの保存データは変更しません。
+
+既定の起点はDiverViewControllerのspine.005（胸付近）です。カメラを以前Obstacle Ray Originに指定していても「体の中心を判定の起点にする」がONなら体の中心を使います。OFFにすると従来の指定点、未指定なら移動Root＋Obstacle Ray Heightを使用します。
+
+進行方向へ中心レイと半径0.25mのSphereCastを出し、最も近いColliderを使います。開始時の重なりもOverlapSphereで確認します。自分自身とTriggerは除外します。対象はObstacle Layersで絞れます。停止指示後・自動ブレーキ中も残距離を確認し、移動量を障害物までの距離－Obstacle Clearance以内に制限します。判定結果の配列が埋まった場合は拡張して再検索し、上限で満杯なら安全のため停止します。
+
+Mainの保存値は最大10m/s・減速3m/s²です。この場合、通常の制動距離だけで約16.7m必要です。検出距離には制動距離・次フレームの移動・停止余白を含めます。岩を検出した後は再度前進指示するまで停止します。元から岩の中にいる場合の自動押し出しは行いません。
+
+Inspectorの調整項目：体の中心を判定の起点にする、衝突判定の半径（m）、ColliderのないMossRockを補完、Obstacle Layers、Obstacle Clearance、Deceleration。
+
+検証：Unity参照DLLによるC#コンパイル、制動距離とフレーム時間の変化・残距離制限・グリッド間隔の独立テスト16項目成功。Unityを起動していないため、実際のCollider生成・Physics判定・見え方は未確認です。

@@ -1,14 +1,8 @@
 using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
-using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
-using Vosk;
 
 /// <summary>
 /// Offline Japanese voice-command input for a Unity Windows build.
@@ -22,7 +16,7 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
     private enum Command
     {
         LookUp, LookDown, LookRight, LookLeft, TurnAround,
-        MoveForward, Stop, Feeding
+        MoveForward, Stop, Feeding, Retreat
     }
 
     [Header("Offline Vosk model")]
@@ -32,6 +26,19 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
 
     [Header("Kinect gate")]
     [SerializeField] private bool palmUpRequiredForFeeding = true;
+    [SerializeField] private Vector3 palmNormalLocalAxis = Vector3.up;
+    [SerializeField, Range(-1f, 1f)] private float palmUpDotThreshold = 0.55f;
+    [Header("Feeding test")]
+    [Tooltip("Replace Kinect hand input with keyboard input. Speech recognition stays enabled.")]
+    [SerializeField] private bool keyboardFeedingTestMode;
+    [Header("Development controls")]
+    [Tooltip("矢印/B/I/Space/Rで視点・前進・停止・撤退をテストします。音声操作も併用できます。餌やりのキー試験設定とは独立しています。")]
+    [SerializeField, InspectorName("開発用キー操作")] private bool keyboardControlTestMode;
+    public bool KeyboardControlTestMode => keyboardControlTestMode;
+    [Header("Feeding animation")]
+    [Tooltip("Pause the diver Animator during feeding. Kinect/keyboard arm tracking stays active.")]
+    [SerializeField, InspectorName("餌やり中は通常アニメーションを停止")]
+    private bool pauseDiverAnimationWhileFeeding = true;
 
     [Header("Command events")]
     [SerializeField] private CommandEvent lookUp = new CommandEvent();
@@ -47,214 +54,174 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
     private const int ChunkFrames = 1024;
     private static readonly Dictionary<string, Command> PhraseMap = BuildPhraseMap();
 
-    private readonly ConcurrentQueue<byte[]> audioQueue = new ConcurrentQueue<byte[]>();
-    private readonly ConcurrentQueue<string> recognizedQueue = new ConcurrentQueue<string>();
-    private Thread recognitionThread;
-    private volatile bool keepRunning;
-    private Model model;
-    private VoskRecognizer recognizer;
+    [SerializeField, Min(10f)] private float modelLoadTimeoutSeconds = 180f;
+    private VoskVoiceSession session;
+    private Coroutine startup;
+    private float nextStorageCheck;
+    private float nextAudioWarning;
+    private bool shutdownReported;
+    private float[] microphoneBuffer;
+    private DiverFeedingFoodController feedingFoodController;
     private AudioClip microphoneClip;
     private string microphoneDevice;
     private int microphoneCursor;
     private bool palmUp;
     private bool loggedFirstAudioChunk;
 
-    private IEnumerator Start()
+    public bool IsVoiceReady => isActiveAndEnabled && session != null && session.Ready && microphoneClip != null;
+    public bool IsVoiceInitializing => isActiveAndEnabled && (session == null || (!session.Ready && !session.Finished));
+
+    private void Awake()
     {
-        string modelPath;
-        string streamingAssetsPath = Application.streamingAssetsPath;
-        string persistentDataPath = Application.persistentDataPath;
-        Task<string> resolveModelTask = Task.Run(
-            () => ResolveModelPath(modelFolderName, streamingAssetsPath, persistentDataPath));
+        feedingFoodController = GetComponent<DiverFeedingFoodController>();
+        if (feedingFoodController == null)
+            feedingFoodController = gameObject.AddComponent<DiverFeedingFoodController>();
+        feedingFoodController.Configure(this, keyboardFeedingTestMode, pauseDiverAnimationWhileFeeding);
+    }
 
-        if (modelFolderName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            Debug.Log("Vosk model archive is being prepared. First launch may take several minutes.", this);
+    private void OnEnable()
+    {
+#if UNITY_EDITOR
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += Shutdown;
+        UnityEditor.EditorApplication.playModeStateChanged += OnEditorPlayModeChanged;
+#endif
+        startup = StartCoroutine(InitializeVoice());
+    }
 
-        while (!resolveModelTask.IsCompleted)
-            yield return null;
-
-        if (resolveModelTask.IsFaulted)
+    private IEnumerator InitializeVoice()
+    {
+        // Re-enabling must not replace a previous owner that is still shutting down.
+        if (session != null && !session.Finished)
         {
-            Debug.LogError("Vosk model preparation failed: " + resolveModelTask.Exception?.GetBaseException().Message, this);
+            Debug.LogError("[Vosk] Previous session is still stopping. Initialization was blocked; no duplicate model was loaded.", this);
             enabled = false;
             yield break;
         }
-
-        modelPath = resolveModelTask.Result;
-        Task<Model> loadModelTask = Task.Run(() => new Model(modelPath));
-        while (!loadModelTask.IsCompleted)
-            yield return null;
-
-        if (loadModelTask.IsFaulted)
-        {
-            Debug.LogError("Vosk model loading failed: " + loadModelTask.Exception?.GetBaseException().Message, this);
-            enabled = false;
-            yield break;
-        }
-
-        model = loadModelTask.Result;
-        Debug.Log("[Vosk] Model loaded successfully from: " + modelPath, this);
-
+        shutdownReported = false;
+        microphoneCursor = 0;
+        loggedFirstAudioChunk = false;
+        nextStorageCheck = 0f;
+        nextAudioWarning = 0f;
         if (Microphone.devices == null || Microphone.devices.Length == 0)
         {
-            Debug.LogError("Vosk voice commands: no microphone is available.", this);
+            Debug.LogError("[Vosk] No microphone available. Model loading was skipped.", this);
             enabled = false;
             yield break;
         }
-
         microphoneDevice = Microphone.devices[0];
-        microphoneClip = Microphone.Start(microphoneDevice, true, 1, requestedMicrophoneRate);
-        if (microphoneClip == null)
-        {
-            Debug.LogError("Vosk voice commands: microphone could not be started.", this);
-            enabled = false;
-            yield break;
-        }
-
-        Debug.Log($"[Vosk] Microphone started: device={microphoneDevice}, frequency={microphoneClip.frequency}, channels={microphoneClip.channels}.", this);
-
+        if (keyboardFeedingTestMode)
+            Debug.Log("[Vosk] Feeding keyboard test mode is active; speech recognition remains enabled.", this);
         try
         {
-            Vosk.Vosk.SetLogLevel(-1);
-            recognizer = new VoskRecognizer(model, OutputRate, BuildGrammarJson());
-            recognizer.SetWords(false);
+            session = new VoskVoiceSession(modelFolderName, Application.streamingAssetsPath,
+                Application.persistentDataPath, BuildGrammarJson(), OutputRate);
+            session.Start();
         }
         catch (Exception exception)
         {
-            Debug.LogError("Vosk initialization failed: " + exception.Message, this);
-            Microphone.End(microphoneDevice);
+            Debug.LogError("[Vosk] Failed to start session: " + exception.Message, this);
             enabled = false;
             yield break;
         }
-
-        keepRunning = true;
-        Debug.Log("[Vosk] Recognizer ready. Grammar: " + BuildGrammarJson(), this);
-        recognitionThread = new Thread(RecognitionWorker) { IsBackground = true, Name = "Vosk offline recognition" };
-        recognitionThread.Start();
-    }
-
-    private static string ResolveModelPath(string configuredPath, string streamingAssetsPath, string persistentDataPath)
-    {
-        string sourcePath = Path.Combine(streamingAssetsPath, configuredPath);
-        if (Directory.Exists(sourcePath))
-            return ValidateModelDirectory(sourcePath);
-
-        if (!File.Exists(sourcePath))
-            throw new FileNotFoundException("Model folder or archive was not found under StreamingAssets.", sourcePath);
-        if (!string.Equals(Path.GetExtension(sourcePath), ".zip", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Model archive must use the .zip extension.");
-
-        string modelName = Path.GetFileNameWithoutExtension(sourcePath);
-        string targetPath = Path.Combine(persistentDataPath, modelName);
-        if (Directory.Exists(targetPath))
-            return ValidateModelDirectory(targetPath);
-
-        string temporaryPath = targetPath + ".extracting-" + Guid.NewGuid().ToString("N");
-        Directory.CreateDirectory(temporaryPath);
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        while (!session.Ready && !session.Finished)
+        {
+            if (timer.Elapsed.TotalSeconds > Mathf.Max(10f, modelLoadTimeoutSeconds))
+            {
+                Debug.LogError("[Vosk] Model loading timed out. Stop requested; another model cannot start while native loading finishes.", this);
+                enabled = false;
+                yield break;
+            }
+            yield return null;
+        }
+        DrainSessionMessages();
+        if (session.Finished)
+        {
+            Debug.LogError("[Vosk] Initialization stopped: " + (session.Error ?? "cancelled"), this);
+            enabled = false;
+            yield break;
+        }
         try
         {
-            using (FileStream archiveStream = File.OpenRead(sourcePath))
-            using (ZipArchive archive = new ZipArchive(archiveStream, ZipArchiveMode.Read, false))
-            {
-                string commonRoot = FindCommonRoot(archive.Entries);
-                string temporaryRoot = Path.GetFullPath(temporaryPath) + Path.DirectorySeparatorChar;
-
-                foreach (ZipArchiveEntry entry in archive.Entries)
-                {
-                    string relativePath = entry.FullName.Replace('\\', '/');
-                    if (!string.IsNullOrEmpty(commonRoot))
-                    {
-                        if (relativePath == commonRoot)
-                            continue;
-                        if (relativePath.StartsWith(commonRoot + "/", StringComparison.Ordinal))
-                            relativePath = relativePath.Substring(commonRoot.Length + 1);
-                    }
-
-                    if (string.IsNullOrEmpty(relativePath))
-                        continue;
-
-                    string outputPath = Path.GetFullPath(Path.Combine(temporaryPath, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-                    if (!outputPath.StartsWith(temporaryRoot, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException("The model archive contains an invalid path: " + entry.FullName);
-
-                    if (relativePath.EndsWith("/", StringComparison.Ordinal))
-                    {
-                        Directory.CreateDirectory(outputPath);
-                        continue;
-                    }
-
-                    string outputDirectory = Path.GetDirectoryName(outputPath);
-                    if (!string.IsNullOrEmpty(outputDirectory))
-                        Directory.CreateDirectory(outputDirectory);
-
-                    using (Stream input = entry.Open())
-                    using (FileStream output = File.Create(outputPath))
-                        input.CopyTo(output);
-                }
-            }
-
-            ValidateModelDirectory(temporaryPath);
-            Directory.Move(temporaryPath, targetPath);
-            return targetPath;
+            microphoneClip = Microphone.Start(microphoneDevice, true, 1, requestedMicrophoneRate);
+            if (microphoneClip == null) throw new InvalidOperationException("Microphone could not be started.");
+            microphoneBuffer = new float[ChunkFrames * microphoneClip.channels];
+            Debug.Log($"[Vosk] Microphone started: device={microphoneDevice}, frequency={microphoneClip.frequency}, channels={microphoneClip.channels}.", this);
         }
-        catch
+        catch (Exception exception)
         {
-            if (Directory.Exists(temporaryPath))
-                Directory.Delete(temporaryPath, true);
-            throw;
+            Debug.LogError("[Vosk] Microphone initialization failed: " + exception.Message, this);
+            enabled = false;
+            yield break;
         }
+        Debug.Log("[Vosk] Recognizer ready. Grammar: " + BuildGrammarJson(), this);
+        startup = null;
     }
 
-    private static string FindCommonRoot(IReadOnlyCollection<ZipArchiveEntry> entries)
+    private void DrainSessionMessages()
     {
-        string root = null;
-        foreach (ZipArchiveEntry entry in entries)
+        if (session == null) return;
+        for (int i = 0; i < 8 && session.TryReadMessage(out string message); i++)
         {
-            string path = entry.FullName.Replace('\\', '/').TrimStart('/');
-            if (string.IsNullOrEmpty(path))
-                continue;
-
-            int separator = path.IndexOf('/');
-            if (separator < 0)
-                return string.Empty;
-
-            string entryRoot = path.Substring(0, separator);
-            if (root == null)
-                root = entryRoot;
-            else if (!string.Equals(root, entryRoot, StringComparison.Ordinal))
-                return string.Empty;
+            if (message.StartsWith("WARNING: ", StringComparison.Ordinal))
+                Debug.LogWarning("[Vosk] " + message.Substring(9), this);
+            else
+                Debug.Log("[Vosk] " + message, this);
         }
-
-        return root ?? string.Empty;
-    }
-
-    private static string ValidateModelDirectory(string path)
-    {
-        if (!Directory.Exists(Path.Combine(path, "am")) ||
-            !Directory.Exists(Path.Combine(path, "conf")) ||
-            !Directory.Exists(Path.Combine(path, "graph")))
-            throw new InvalidDataException("The model folder must contain am, conf, and graph folders: " + path);
-        return path;
     }
 
     private void Update()
     {
-        if (microphoneClip != null && Microphone.IsRecording(microphoneDevice))
-            CaptureAvailableAudio();
-
-        while (recognizedQueue.TryDequeue(out string resultJson))
+        if (session == null) return;
+        DrainSessionMessages();
+        if (session.Finished)
         {
+            Debug.LogError("[Vosk] Session stopped: " + (session.Error ?? "cancelled"), this);
+            enabled = false;
+            return;
+        }
+        // Also watch reserve while native loading is in progress and during recognition.
+        if (Time.realtimeSinceStartup >= nextStorageCheck)
+        {
+            nextStorageCheck = Time.realtimeSinceStartup + 2f;
+            try
+            {
+                VoskModelPreparation.EnsureDiskSpace(Application.persistentDataPath, VoskModelPreparation.DiskReserve);
+                VoskModelPreparation.EnsureDiskSpace(Environment.SystemDirectory, VoskModelPreparation.DiskReserve);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError("[Vosk] Storage guard stopped speech: " + exception.Message, this);
+                enabled = false;
+                return;
+            }
+        }
+        bool waitingForPlayer = DiverStartupGate.IsBlocked(gameObject.scene);
+        if (session.Ready && microphoneClip != null && Microphone.IsRecording(microphoneDevice))
+        {
+            if (waitingForPlayer) microphoneCursor = Mathf.Max(0, Microphone.GetPosition(microphoneDevice));
+            else CaptureAvailableAudio();
+        }
+        // A command may disable/destroy this component. Do not dispatch the rest afterward.
+        for (int i = 0; i < 8 && isActiveAndEnabled && session.TryReadResult(out string resultJson); i++)
+        {
+            if (waitingForPlayer) continue;
             string phrase = ReadText(resultJson);
             Debug.Log($"[Vosk] Final result: json={resultJson}, text=\"{phrase}\", normalized=\"{Normalize(phrase)}\"", this);
-            if (string.IsNullOrEmpty(phrase))
-                Debug.Log("[Vosk] No command phrase was recognized in this segment.", this);
-            else
-                DispatchPhrase(phrase);
+            if (!string.IsNullOrEmpty(phrase)) DispatchPhrase(phrase);
         }
     }
 
     /// <summary>Call from the Kinect hand tracker whenever palm orientation changes.</summary>
     public void SetPalmFacingUp(bool value) => palmUp = value;
+
+    /// <summary>Update the feeding gate from the Kinect hand joint's sensor-space orientation.</summary>
+    public void SetPalmOrientation(Quaternion handRotation, bool tracked)
+    {
+        Vector3 localNormal = palmNormalLocalAxis.sqrMagnitude > 1e-6f
+            ? palmNormalLocalAxis.normalized : Vector3.up;
+        palmUp = tracked && Vector3.Dot(handRotation * localNormal, Vector3.up) >= palmUpDotThreshold;
+    }
 
     private void CaptureAvailableAudio()
     {
@@ -269,17 +236,28 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
 
         while (framesAvailable >= ChunkFrames)
         {
-            float[] interleaved = new float[ChunkFrames * microphoneClip.channels];
-            microphoneClip.GetData(interleaved, microphoneCursor);
-            byte[] pcm = ConvertToPcm16Mono(interleaved, microphoneClip.channels, microphoneClip.frequency);
-            if (pcm.Length > 0)
+            if (!session.HasAudioCapacity)
             {
-                if (!loggedFirstAudioChunk)
+                // Drop stale audio rather than build an unbounded backlog of commands.
+                microphoneCursor = currentPosition;
+                if (Time.realtimeSinceStartup >= nextAudioWarning)
                 {
-                    loggedFirstAudioChunk = true;
-                    Debug.Log($"[Vosk] Microphone audio reached recognizer input (first chunk: {pcm.Length} bytes).", this);
+                    nextAudioWarning = Time.realtimeSinceStartup + 10f;
+                    Debug.LogWarning("[Vosk] Audio queue reached its limit; old input was skipped.", this);
                 }
-                audioQueue.Enqueue(pcm);
+                return;
+            }
+            if (!microphoneClip.GetData(microphoneBuffer, microphoneCursor))
+            {
+                Debug.LogError("[Vosk] Microphone read failed; stopping session.", this);
+                enabled = false;
+                return;
+            }
+            byte[] pcm = ConvertToPcm16Mono(microphoneBuffer, microphoneClip.channels, microphoneClip.frequency);
+            if (session.TryEnqueue(pcm) && !loggedFirstAudioChunk)
+            {
+                loggedFirstAudioChunk = true;
+                Debug.Log($"[Vosk] Microphone audio reached recognizer input (first chunk: {pcm.Length} bytes).", this);
             }
 
             microphoneCursor = (microphoneCursor + ChunkFrames) % clipFrames;
@@ -287,38 +265,9 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         }
     }
 
-    private void RecognitionWorker()
-    {
-        while (keepRunning)
-        {
-            if (!audioQueue.TryDequeue(out byte[] pcm))
-            {
-                Thread.Sleep(4);
-                continue;
-            }
-
-            try
-            {
-                if (recognizer.AcceptWaveform(pcm, pcm.Length))
-                    recognizedQueue.Enqueue(recognizer.Result());
-            }
-            catch (Exception exception)
-            {
-                Debug.LogError("Vosk recognition failed: " + exception.Message);
-            }
-        }
-
-        try
-        {
-            string finalResult = recognizer.FinalResult();
-            if (!string.IsNullOrEmpty(finalResult))
-                recognizedQueue.Enqueue(finalResult);
-        }
-        catch { /* Shutting down. */ }
-    }
-
     private void DispatchPhrase(string recognizedText)
     {
+        if (DiverStartupGate.IsBlocked(gameObject.scene)) return;
         string normalized = Normalize(recognizedText);
         if (!PhraseMap.TryGetValue(normalized, out Command command))
         {
@@ -327,9 +276,15 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         }
 
         Debug.Log($"[Vosk] Command matched: {command} (phrase=\"{recognizedText}\").", this);
+        if(command != Command.Retreat) DiverAnimationController.NotifyRecognizedCommand(gameObject.scene);
+        bool feedingAccepted = command != Command.Feeding ||
+            ((keyboardFeedingTestMode || !palmUpRequiredForFeeding || palmUp) &&
+             feedingFoodController != null && !feedingFoodController.IsFeedingActive);
+        if(feedingAccepted) DiverAudioController.PlayRecognition(gameObject.scene,command==Command.Stop || command==Command.Retreat);
 
         switch (command)
         {
+            case Command.Retreat: DiverRetreatController.Request(gameObject.scene); break;
             case Command.LookUp: InvokeCommand("LookUp", lookUp); break;
             case Command.LookDown: InvokeCommand("LookDown", lookDown); break;
             case Command.LookRight: InvokeCommand("LookRight", lookRight); break;
@@ -338,8 +293,12 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
             case Command.MoveForward: InvokeCommand("MoveForward", moveForward); break;
             case Command.Stop: InvokeCommand("Stop", stop); break;
             case Command.Feeding:
-                if (!palmUpRequiredForFeeding || palmUp)
+                if (keyboardFeedingTestMode || !palmUpRequiredForFeeding || palmUp)
+                {
                     InvokeCommand("Feeding", feeding);
+                    if (!HasConfiguredListener(feeding))
+                        feedingFoodController?.EnterFeedingWait();
+                }
                 else
                     Debug.LogWarning("[Vosk] Feeding command blocked: Kinect palm-up condition is false. Check SetPalmFacingUp().", this);
                 break;
@@ -348,11 +307,21 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
 
     private void InvokeCommand(string commandName, CommandEvent commandEvent)
     {
-        if (commandEvent == null || commandEvent.GetPersistentEventCount() == 0)
+        if (!HasConfiguredListener(commandEvent))
             Debug.LogWarning($"[Vosk] {commandName} matched, but its UnityEvent has no Inspector listeners.", this);
         else
             Debug.Log($"[Vosk] Invoking {commandName} UnityEvent ({commandEvent.GetPersistentEventCount()} Inspector listener(s)).", this);
         commandEvent?.Invoke();
+    }
+
+    private static bool HasConfiguredListener(UnityEngine.Events.UnityEventBase commandEvent)
+    {
+        if (commandEvent == null) return false;
+        for (int i = 0; i < commandEvent.GetPersistentEventCount(); i++)
+            if (commandEvent.GetPersistentTarget(i) != null &&
+                !string.IsNullOrEmpty(commandEvent.GetPersistentMethodName(i)))
+                return true;
+        return false;
     }
 
     private static Dictionary<string, Command> BuildPhraseMap()
@@ -366,6 +335,7 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         Add(map, Command.MoveForward, "進め", "進んで", "すすんで", "進んでください", "前進", "前へ", "前に進んで", "前へ進んで", "前に進んでください");
         Add(map, Command.Stop, "止まれ", "とまれ", "止まって", "とまって", "止まってください", "停止", "ストップ");
         Add(map, Command.Feeding, "餌やり", "餌をあげる", "餌をあげよう");
+        Add(map, Command.Retreat, "撤退", "撤退して", "撤退します");
         return map;
     }
 
@@ -428,30 +398,62 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         return output;
     }
 
-    private void OnDisable() => Shutdown();
+    private void OnDisable()
+    {
+#if UNITY_EDITOR
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= Shutdown;
+        UnityEditor.EditorApplication.playModeStateChanged -= OnEditorPlayModeChanged;
+#endif
+        Shutdown();
+    }
 
     private void OnDestroy() => Shutdown();
+    private void OnApplicationQuit() => Shutdown();
+
+#if UNITY_EDITOR
+    private void OnEditorPlayModeChanged(UnityEditor.PlayModeStateChange state)
+    {
+        if (state == UnityEditor.PlayModeStateChange.ExitingPlayMode) Shutdown();
+    }
+#endif
 
     private void Shutdown()
     {
-        keepRunning = false;
-        while (audioQueue.TryDequeue(out _)) { }
-        if (recognitionThread != null && recognitionThread.IsAlive)
-            recognitionThread.Join(3000);
-        bool workerStopped = recognitionThread == null || !recognitionThread.IsAlive;
-        recognitionThread = null;
-
-        if (!string.IsNullOrEmpty(microphoneDevice) && Microphone.IsRecording(microphoneDevice))
-            Microphone.End(microphoneDevice);
-        microphoneClip = null;
-
-        if (workerStopped)
+        if (startup != null)
         {
-            recognizer?.Dispose();
-            model?.Dispose();
+            StopCoroutine(startup);
+            startup = null;
         }
-        recognizer = null;
-        model = null;
+        // Never dispose native objects from the main thread or forget a live worker.
+        // RequestStop is idempotent; its owner thread always disposes in nested using/finally.
+        session?.RequestStop();
+        try
+        {
+            if (!string.IsNullOrEmpty(microphoneDevice) && Microphone.IsRecording(microphoneDevice))
+                Microphone.End(microphoneDevice);
+        }
+        finally
+        {
+            if (microphoneClip != null) Destroy(microphoneClip);
+            microphoneClip = null;
+            microphoneBuffer = null;
+            microphoneDevice = null;
+            microphoneCursor = 0;
+        }
+        if (session != null && !shutdownReported)
+        {
+            shutdownReported = true;
+            if (session.WaitForStop(200))
+            {
+                DrainSessionMessages();
+                if (session.Error == null)
+                    Debug.Log("[Vosk] Session stopped; native resources released.", this);
+                else
+                    Debug.LogError("[Vosk] Session ended with an error: " + session.Error, this);
+            }
+            else
+                Debug.LogWarning("[Vosk] Stop requested. Native call is still finishing; resources remain owned and duplicate model loading is blocked. They will be disposed when the call returns.", this);
+        }
     }
 
     [Serializable] private sealed class ResultData { public string text; }

@@ -15,6 +15,19 @@ public sealed class DiverViewController : MonoBehaviour
     [SerializeField] private Transform spine006Bone;
     [SerializeField] private Camera viewCamera;
     [SerializeField] private Camera billboardCamera;
+    public Camera ViewCamera => viewCamera;
+    public Transform BodyRoot => ResolveBodyRoot();
+    public Vector3 BodyCenter => spine005Bone ? spine005Bone.position : BodyRoot.position;
+    public Vector3 BodyForward => bodyRoot ? Vector3.ProjectOnPlane(bodyRoot.rotation * bodyForwardInRoot, Vector3.up).normalized : transform.forward;
+    public bool IsAligningToView => aligningToView;
+    public int AlignmentVersion => alignmentVersion;
+    public bool IsFeedingControlLocked { get; private set; }
+    public void SetFeedingControlLock(bool value)
+    {
+        IsFeedingControlLocked = value;
+        if (value) movingSteering = false;
+    }
+    private bool ManualViewBlocked => IsFeedingControlLocked || DiverStartupGate.IsBlocked(gameObject.scene);
     [Tooltip("View camera offset in Face bone local coordinates. Positive Z moves the camera toward the face's forward direction.")]
     [SerializeField] private Vector3 viewCameraPositionOffset = new Vector3(0f, 0f, 0.1f);
 
@@ -48,9 +61,25 @@ public sealed class DiverViewController : MonoBehaviour
     private Quaternion previousSpineOffset = Quaternion.identity;
     private Quaternion previousSpineOutput;
     private bool spineOffsetApplied;
+    private Vector3 bodyForwardInRoot = Vector3.forward;
+    private readonly DiverFacingTransition facingTransition = new DiverFacingTransition();
+    private bool aligningToView;
+    private int alignmentVersion;
+    private bool movingSteering;
+    public void SetMovingSteering(bool value) => movingSteering = value;
+
+    private Transform ResolveBodyRoot()
+    {
+        // Imported animation bones must not own persistent world movement/heading.
+        if (!bodyRoot || (bodyRoot != transform && bodyRoot.IsChildOf(transform))) bodyRoot = transform;
+        return bodyRoot;
+    }
 
     private void Awake()
     {
+        if(gameObject.scene.name=="Main" && !GetComponent<DiverAnimationController>())
+            gameObject.AddComponent<DiverAnimationController>();
+        ResolveBodyRoot();
         faceFollowsSpine005 = faceBone != null && spine005Bone != null &&
                               (faceBone == spine005Bone || faceBone.IsChildOf(spine005Bone));
         if (bodyRoot == null || faceBone == null)
@@ -63,6 +92,8 @@ public sealed class DiverViewController : MonoBehaviour
         faceBoneRestPosition = faceBone.position;
         faceRotationRelativeToBody = Quaternion.Inverse(bodyRootRestRotation) * faceBoneRestRotation;
         facePositionRelativeToBody = Quaternion.Inverse(bodyRootRestRotation) * (faceBoneRestPosition - bodyRootRestPosition);
+        Vector3 forward = Vector3.ProjectOnPlane(faceBone.forward, Vector3.up);
+        if (forward.sqrMagnitude > .0001f) bodyForwardInRoot = Quaternion.Inverse(bodyRoot.rotation) * forward.normalized;
     }
 
     /// <summary>Allows the movement controller to supply its opposite spine lean.</summary>
@@ -82,8 +113,29 @@ public sealed class DiverViewController : MonoBehaviour
     }
 
     /// <summary>Turns the body toward the current horizontal view direction and recenters pitch/yaw.</summary>
+    public void RecenterVerticalView()
+    {
+        if (ManualViewBlocked) return;
+        InterruptActionAlignment();
+        targetPitch = 0f;
+        pitchSmoothVelocity = 0f;
+    }
+
+    /// <summary>Turns the body toward the current horizontal view direction and recenters pitch/yaw.</summary>
     public void AlignBodyToView()
     {
+        if (ManualViewBlocked) return;
+        TryAlignBodyToView(out _);
+    }
+
+    public bool TryAlignBodyToView(out int version)
+    {
+        version = alignmentVersion;
+        if (!isActiveAndEnabled || DiverStartupGate.IsBlocked(gameObject.scene) || !ResolveBodyRoot() || !faceBone || !viewCamera)
+        {
+            Debug.LogWarning("[DiverView] Cannot align: check active view controller, Face bone and view camera.", this);
+            return false;
+        }
         Vector3 requestedForward = viewCamera != null
             ? Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up)
             : Vector3.zero;
@@ -93,24 +145,42 @@ public sealed class DiverViewController : MonoBehaviour
         targetPitch = 0f;
         targetYaw = 0f;
         if (bodyRoot == null || requestedForward.sqrMagnitude < 0.0001f)
-            return;
+            return false;
 
-        Vector3 bodyForward = Vector3.ProjectOnPlane(bodyRoot.forward, Vector3.up);
+        Vector3 bodyForward = BodyForward;
         if (bodyForward.sqrMagnitude < 0.0001f)
             bodyForward = Vector3.forward;
         float turnAngle = Vector3.SignedAngle(bodyForward, requestedForward.normalized, Vector3.up);
         bodyTurnStart = bodyRoot.rotation;
         bodyTurnEnd = Quaternion.AngleAxis(turnAngle, Vector3.up) * bodyTurnStart;
         bodyTurnElapsed = 0f;
-        bodyTurning = Mathf.Abs(turnAngle) > 0.1f;
+        bodyTurning = false;
+        aligningToView = true;
+        facingTransition.Begin(turnAngle);
+        pitchSmoothVelocity = yawSmoothVelocity = 0f;
+        version = ++alignmentVersion;
+        return true;
     }
 
     private void LateUpdate()
     {
+        // Keep the optical camera attached during robot boot; command entry points remain gated.
         pitch = Mathf.SmoothDampAngle(pitch, targetPitch, ref pitchSmoothVelocity, viewSmoothTime);
-        yaw = Mathf.SmoothDampAngle(yaw, targetYaw, ref yawSmoothVelocity, viewSmoothTime);
+        if (aligningToView && bodyRoot)
+        {
+            facingTransition.Step(Time.deltaTime, bodyTurnDuration, pitch);
+            bodyRoot.rotation = Quaternion.AngleAxis(facingTransition.BodyYaw, Vector3.up) * bodyTurnStart;
+            yaw = facingTransition.RemainingYaw;
+            if (facingTransition.Complete)
+            {
+                aligningToView = false;
+                pitch = targetPitch = yaw = targetYaw = 0f;
+                pitchSmoothVelocity = yawSmoothVelocity = 0f;
+            }
+        }
+        else yaw = Mathf.SmoothDampAngle(yaw, targetYaw, ref yawSmoothVelocity, viewSmoothTime);
 
-        if (bodyTurning && bodyRoot)
+        if (!aligningToView && bodyTurning && bodyRoot)
         {
             bodyTurnElapsed += Time.deltaTime;
             float t = Mathf.Clamp01(bodyTurnElapsed / bodyTurnDuration);
@@ -164,16 +234,30 @@ public sealed class DiverViewController : MonoBehaviour
     }
 
     // Positive local X rotates Unity's +Z forward vector downward.
-    public void LookUp() => targetPitch = Mathf.Clamp(targetPitch - verticalStep, -maxVerticalAngle, maxVerticalAngle);
+    public void LookUp() { if (!ManualViewBlocked) { InterruptActionAlignment(); targetPitch = Mathf.Clamp(targetPitch - verticalStep, -maxVerticalAngle, maxVerticalAngle); } }
 
-    public void LookDown() => targetPitch = Mathf.Clamp(targetPitch + verticalStep, -maxVerticalAngle, maxVerticalAngle);
+    public void LookDown() { if (!ManualViewBlocked) { InterruptActionAlignment(); targetPitch = Mathf.Clamp(targetPitch + verticalStep, -maxVerticalAngle, maxVerticalAngle); } }
 
-    public void LookRight() => targetYaw = Mathf.Clamp(targetYaw + horizontalStep, -maxHorizontalAngle, maxHorizontalAngle);
+    public void LookRight() => LookHorizontal(horizontalStep);
 
-    public void LookLeft() => targetYaw = Mathf.Clamp(targetYaw - horizontalStep, -maxHorizontalAngle, maxHorizontalAngle);
+    public void LookLeft() => LookHorizontal(-horizontalStep);
+
+    private void LookHorizontal(float angle)
+    {
+        if (ManualViewBlocked) return;
+        InterruptActionAlignment();
+        if (!movingSteering)
+        { targetYaw = Mathf.Clamp(targetYaw + angle, -maxHorizontalAngle, maxHorizontalAngle); return; }
+        // Use the same smooth whole-body turn as TurnAround. Forward movement
+        // already reads BodyForward every frame, so the course follows the turn.
+        targetYaw = 0f;
+        StartBodyTurn(angle);
+    }
 
     public void TurnAround()
     {
+        if (ManualViewBlocked) return;
+        InterruptActionAlignment();
         targetPitch = 0f;
         targetYaw = 0f;
         StartBodyTurn(180f);
@@ -191,7 +275,25 @@ public sealed class DiverViewController : MonoBehaviour
 
     public void ResetView()
     {
+        if (ManualViewBlocked) return;
+        InterruptActionAlignment();
         targetPitch = 0f;
         targetYaw = 0f;
+    }
+
+    private void InterruptActionAlignment()
+    {
+        alignmentVersion++;
+        if (!aligningToView) return;
+        aligningToView = false;
+        targetPitch = pitch;
+        targetYaw = yaw;
+        pitchSmoothVelocity = yawSmoothVelocity = 0f;
+    }
+    private void OnDisable()
+    {
+        IsFeedingControlLocked = false;
+        InterruptActionAlignment();
+        bodyTurning = false;
     }
 }
