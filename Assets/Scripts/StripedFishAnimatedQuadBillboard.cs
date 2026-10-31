@@ -16,6 +16,103 @@ public sealed class StripedFishAnimatedQuadBillboard : MonoBehaviour
     [SerializeField] string finMaterialNameContains = "Material";
     [SerializeField, Range(0f, 0.1f)] float finRootBehindBodyMargin = 0.01f;
 
+    [System.Serializable]
+    public sealed class MaterialSlotReplacement
+    {
+        [Tooltip("Source renderer material slot, starting at zero.")]
+        [Min(0)] public int SlotIndex;
+        public Material Material;
+    }
+
+    [System.Serializable]
+    public sealed class MaterialVariant
+    {
+        public string Name;
+        [Tooltip("Only these slots change. Other slots use the original materials.")]
+        public MaterialSlotReplacement[] Replacements = new MaterialSlotReplacement[0];
+    }
+
+    [Header("餌やり時のマテリアル変更")]
+    [SerializeField, InspectorName("差し替え設定")]
+    FishMaterialColorBinding[] materialColorBindings = new FishMaterialColorBinding[0];
+    [SerializeField, HideInInspector] MaterialVariant[] materialVariants = new MaterialVariant[0];
+    [SerializeField, HideInInspector, Min(0)] int previewVariantIndex;
+    [Tooltip("Food palette index -> material variant index. Empty entries fall back to food index modulo variant count. -1 excludes that food color.")]
+    [SerializeField, HideInInspector] int[] feedingVariantByFoodColor = new int[0];
+    Material[] originalSourceMaterials;
+    bool materialsOverridden;
+    bool UsesColorSets => materialColorBindings != null && materialColorBindings.Length > 0;
+    FishMaterialColorSet FirstColorSet => UsesColorSets && materialColorBindings[0] != null ? materialColorBindings[0].ColorSet : null;
+    public int MaterialVariantCount => UsesColorSets ? (FirstColorSet ? FirstColorSet.Count : 0) : (materialVariants != null ? materialVariants.Length : 0);
+
+    public bool TryGetFeedingVariant(int foodColorIndex, Color foodColor, out int variantIndex)
+    {
+        if (!UsesColorSets) return TryGetFeedingVariant(foodColorIndex, out variantIndex);
+        variantIndex = -1;
+        SkinnedMeshRenderer renderer = source ? source : FindAnimatedRenderer();
+        if (!renderer || !FirstColorSet || !FirstColorSet.TryFindClosest(foodColor, out int index)) return false;
+        if (!FishMaterialColorReplacement.TryBuild(originalSourceMaterials ?? renderer.sharedMaterials,
+            materialColorBindings, foodColor, out _, out _)) return false;
+        variantIndex = index;
+        return true;
+    }
+
+    public bool TryGetFeedingVariant(int foodColorIndex, out int variantIndex)
+    {
+        variantIndex = -1;
+        if (foodColorIndex < 0 || MaterialVariantCount == 0) return false;
+        if (UsesColorSets)
+        {
+            Material material = FirstColorSet.GetMaterial(foodColorIndex % MaterialVariantCount);
+            return FishMaterialColorSet.TryReadColor(material, out Color color) && TryGetFeedingVariant(foodColorIndex, color, out variantIndex);
+        }
+        int candidate = feedingVariantByFoodColor != null && foodColorIndex < feedingVariantByFoodColor.Length
+            ? feedingVariantByFoodColor[foodColorIndex] : foodColorIndex % MaterialVariantCount;
+        if (candidate < 0 || candidate >= MaterialVariantCount) return false;
+        MaterialVariant variant = materialVariants[candidate];
+        if (variant == null || variant.Replacements == null || variant.Replacements.Length == 0) return false;
+        SkinnedMeshRenderer renderer = source ? source : FindAnimatedRenderer();
+        if (!renderer) return false;
+        int slotCount = (originalSourceMaterials ?? renderer.sharedMaterials).Length;
+        var slots = new HashSet<int>();
+        if (variant.Replacements != null)
+            foreach (MaterialSlotReplacement replacement in variant.Replacements)
+                if (replacement == null || replacement.Material == null || replacement.SlotIndex < 0 ||
+                    replacement.SlotIndex >= slotCount || !slots.Add(replacement.SlotIndex)) return false;
+        variantIndex = candidate;
+        return true;
+    }
+
+    public void CopyMaterialVariantsFrom(StripedFishAnimatedQuadBillboard template)
+    {
+        if (template == null) return;
+        int bindingCount = template.materialColorBindings != null ? template.materialColorBindings.Length : 0;
+        materialColorBindings = new FishMaterialColorBinding[bindingCount];
+        for (int i = 0; i < bindingCount; i++)
+        {
+            var binding = template.materialColorBindings[i];
+            if (binding != null) materialColorBindings[i] = new FishMaterialColorBinding
+                { OriginalMaterial = binding.OriginalMaterial, ColorSet = binding.ColorSet };
+        }
+        materialVariants = new MaterialVariant[template.materialVariants != null ? template.materialVariants.Length : 0];
+        for (int i = 0; i < materialVariants.Length; i++)
+        {
+            MaterialVariant original = template.materialVariants[i];
+            if (original == null) continue;
+            var copied = new MaterialVariant { Name = original.Name };
+            int length = original.Replacements != null ? original.Replacements.Length : 0;
+            copied.Replacements = new MaterialSlotReplacement[length];
+            for (int j = 0; j < length; j++)
+            {
+                MaterialSlotReplacement entry = original.Replacements[j];
+                if (entry != null) copied.Replacements[j] = new MaterialSlotReplacement { SlotIndex = entry.SlotIndex, Material = entry.Material };
+            }
+            materialVariants[i] = copied;
+        }
+        feedingVariantByFoodColor = template.feedingVariantByFoodColor != null
+            ? (int[])template.feedingVariantByFoodColor.Clone() : new int[0];
+    }
+
     struct Triangle
     {
         public int a, b, c, submesh;
@@ -80,6 +177,7 @@ public sealed class StripedFishAnimatedQuadBillboard : MonoBehaviour
         }
         originalForceRenderingOff = source.forceRenderingOff;
         originalUpdateWhenOffscreen = source.updateWhenOffscreen;
+        if (originalSourceMaterials == null) originalSourceMaterials = source.sharedMaterials;
         if (!targetCamera) targetCamera = FindTargetCamera();
         if (!source.sharedMesh || !targetCamera)
         {
@@ -181,7 +279,8 @@ public sealed class StripedFishAnimatedQuadBillboard : MonoBehaviour
             Debug.LogError("The source FBX mesh is not readable. Enable Read/Write in the FBX Model Import Settings, then reimport the asset.", this);
             return false;
         }
-        Material[] sourceMaterials = source.sharedMaterials;
+        // A variant's material names must not change which submeshes are fins.
+        Material[] sourceMaterials = originalSourceMaterials ?? source.sharedMaterials;
         for (int i = 0; i < sourceMaterials.Length && i < mesh.subMeshCount; i++)
         {
             Material material = sourceMaterials[i];
@@ -350,6 +449,15 @@ public sealed class StripedFishAnimatedQuadBillboard : MonoBehaviour
     void LateUpdate()
     {
         if (!source || !targetCamera || !outputMesh || outputTransform == null) return;
+        if (outputVertexSource == null || outputVertexSource.Length == 0) return;
+        // Readonly scratch lists can be recreated empty by a Play Mode script
+        // reload while the output mesh and vertex mapping survive the reload.
+        if (projectedVertices.Count != outputVertexSource.Length)
+        {
+            projectedVertices.Clear();
+            for (int i = 0; i < outputVertexSource.Length; i++)
+                projectedVertices.Add(Vector3.zero);
+        }
         source.BakeMesh(bakedMesh);
         bakedVertices.Clear();
         bakedMesh.GetVertices(bakedVertices);
@@ -555,6 +663,136 @@ public sealed class StripedFishAnimatedQuadBillboard : MonoBehaviour
             ", materials=" + (outputRenderer ? outputRenderer.sharedMaterials.Length : 0), this);
     }
 
+    /// <summary>UnityEvent-compatible entry point; indices start at zero.</summary>
+    public void ApplyMaterialVariant(int variantIndex) => TryApplyMaterialVariant(variantIndex);
+
+    public bool TryApplyMaterialVariant(int variantIndex)
+    {
+        if (UsesColorSets)
+        {
+            Material material = FirstColorSet ? FirstColorSet.GetMaterial(variantIndex) : null;
+            return FishMaterialColorSet.TryReadColor(material, out Color color) && TryApplyFeedingColor(variantIndex, color);
+        }
+        if (!EnsureMaterialSource()) return false;
+        if (variantIndex < 0 || variantIndex >= MaterialVariantCount || materialVariants[variantIndex] == null)
+        {
+            Debug.LogWarning($"[StripedFish Materials] Variant {variantIndex} does not exist (count: {MaterialVariantCount}).", this);
+            return false;
+        }
+
+        MaterialVariant variant = materialVariants[variantIndex];
+        Material[] materials = (Material[])originalSourceMaterials.Clone();
+        var occupiedSlots = new HashSet<int>();
+        if (variant.Replacements != null)
+        {
+            foreach (MaterialSlotReplacement replacement in variant.Replacements)
+            {
+                if (replacement == null || replacement.Material == null ||
+                    replacement.SlotIndex < 0 || replacement.SlotIndex >= materials.Length)
+                {
+                    Debug.LogWarning($"[StripedFish Materials] Variant {variantIndex} has an unassigned material or invalid slot. Available slots: 0..{materials.Length - 1}. Nothing was changed.", this);
+                    return false;
+                }
+                if (!occupiedSlots.Add(replacement.SlotIndex))
+                {
+                    Debug.LogWarning($"[StripedFish Materials] Variant {variantIndex} specifies slot {replacement.SlotIndex} more than once. Nothing was changed.", this);
+                    return false;
+                }
+                materials[replacement.SlotIndex] = replacement.Material;
+            }
+        }
+        ApplySourceMaterials(materials);
+        Debug.Log($"[StripedFish Materials] Applied variant {variantIndex} ({variant.Name}), replacing {occupiedSlots.Count} slot(s).", this);
+        return true;
+    }
+
+    public bool TryApplyFeedingColor(int variantIndex, Color? foodColor)
+    {
+        if (!UsesColorSets || !foodColor.HasValue) return TryApplyMaterialVariant(variantIndex);
+        if (!EnsureMaterialSource()) return false;
+        if (!FishMaterialColorReplacement.TryBuild(originalSourceMaterials, materialColorBindings, foodColor.Value,
+            out Material[] materials, out string error))
+        {
+            Debug.LogWarning("[StripedFish Materials] " + error, this);
+            return false;
+        }
+        ApplySourceMaterials(materials);
+        Debug.Log("[StripedFish Materials] Applied color sets for food color " + foodColor.Value, this);
+        return true;
+    }
+
+    /// <summary>Change one slot of the current appearance from another script.</summary>
+    public bool SetMaterialAtSlot(int slotIndex, Material material)
+    {
+        if (!EnsureMaterialSource()) return false;
+        Material[] materials = source.sharedMaterials;
+        if (material == null || slotIndex < 0 || slotIndex >= materials.Length)
+        {
+            Debug.LogWarning($"[StripedFish Materials] Cannot replace slot {slotIndex}; check its index and material.", this);
+            return false;
+        }
+        materials[slotIndex] = material;
+        ApplySourceMaterials(materials);
+        return true;
+    }
+
+    public void RestoreOriginalMaterials()
+    {
+        if (!EnsureMaterialSource()) return;
+        ApplySourceMaterials((Material[])originalSourceMaterials.Clone());
+        materialsOverridden = false;
+    }
+
+    bool EnsureMaterialSource()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("[StripedFish Materials] Switch materials in Play Mode.", this);
+            return false;
+        }
+        if (!source) source = FindAnimatedRenderer();
+        if (!source)
+        {
+            Debug.LogWarning("[StripedFish Materials] No source SkinnedMeshRenderer was found.", this);
+            return false;
+        }
+        if (originalSourceMaterials == null) originalSourceMaterials = source.sharedMaterials;
+        return true;
+    }
+
+    void ApplySourceMaterials(Material[] materials)
+    {
+        // Renderer arrays are per fish. Material assets and other fish are not edited.
+        source.sharedMaterials = materials;
+        materialsOverridden = true;
+        if (outputRenderer != null)
+        {
+            ReleaseDoubleSidedMaterials();
+            outputMaterials = CreateDoubleSidedMaterials(materials);
+            outputRenderer.sharedMaterials = outputMaterials;
+        }
+    }
+
+    [ContextMenu("Material Variants/Apply Preview Variant (Play Mode)")]
+    void ApplyPreviewMaterialVariant() => ApplyMaterialVariant(previewVariantIndex);
+
+    [ContextMenu("Material Variants/Restore Original (Play Mode)")]
+    void RestorePreviewMaterials() => RestoreOriginalMaterials();
+
+    [ContextMenu("Material Variants/Print Source Material Slots")]
+    void PrintSourceMaterialSlots()
+    {
+        SkinnedMeshRenderer renderer = source ? source : FindAnimatedRenderer();
+        if (!renderer)
+        {
+            Debug.LogWarning("[StripedFish Materials] No source renderer was found.", this);
+            return;
+        }
+        Material[] materials = originalSourceMaterials ?? renderer.sharedMaterials;
+        for (int i = 0; i < materials.Length; i++)
+            Debug.Log($"[StripedFish Materials] Slot {i}: {(materials[i] ? materials[i].name : "<unassigned>")}", this);
+    }
+
     Material[] CreateDoubleSidedMaterials(Material[] sourceMaterials)
     {
         var result = new Material[sourceMaterials.Length];
@@ -653,6 +891,8 @@ public sealed class StripedFishAnimatedQuadBillboard : MonoBehaviour
     {
         if (source)
         {
+            if (materialsOverridden && originalSourceMaterials != null)
+                source.sharedMaterials = originalSourceMaterials;
             source.forceRenderingOff = originalForceRenderingOff;
             source.updateWhenOffscreen = originalUpdateWhenOffscreen;
         }

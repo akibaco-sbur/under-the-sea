@@ -47,9 +47,11 @@ public sealed class SummonFish : MonoBehaviour
         public TextureAssignment[] textureAssignments = Array.Empty<TextureAssignment>();
         [Tooltip("Multiple MonoBehaviour components can be assigned. Their types are added if missing; Animator components should be configured on the fish prefab.")]
         public MonoBehaviour[] behavioursToAdd = Array.Empty<MonoBehaviour>();
+        [Tooltip("Offset from the Root bone to the mouth, in prefab-local units. Zero uses the Root position for the bite check.")]
+        public Vector3 feedingMouthLocalOffset;
     }
 
-    private sealed class FishAgent
+    internal sealed class FishAgent
     {
         public GameObject instance;
         public Transform rootBone;
@@ -68,6 +70,171 @@ public sealed class SummonFish : MonoBehaviour
         public bool isTurning;
         public float accelerationNoise;
         public bool textureAssignmentsApplied;
+        public StripedFishAnimatedQuadBillboard materialSwitcher;
+        public bool returningFromFeeding;
+        public GatheringMember gathering;
+    }
+
+    internal sealed class GatheringMember
+    {
+        internal SummonFish School;
+        internal FishAgent Fish;
+        internal FeedingGroup Group;
+        internal int Variant, Stage;
+        internal float Side, RearDepth, RoamTime, BiteTime;
+        internal Vector3 Offset;
+    }
+
+    public sealed class FeedingGroup
+    {
+        internal readonly List<GatheringMember> Members = new List<GatheringMember>();
+        internal Transform Viewer, Food;
+        internal Color FoodColor;
+        internal float Distance, Radius;
+        internal bool Active = true;
+        internal readonly FishFeedingRace Race = new FishFeedingRace();
+        public bool IsOffering { get; private set; }
+        public bool HasWinner => Race.HasWinner;
+        public int Count
+        {
+            get
+            {
+                int count = 0;
+                foreach (var member in Members)
+                    if (member.School && member.School.isActiveAndEnabled && member.Fish.instance &&
+                        member.Fish.instance.activeInHierarchy && member.Fish.gathering == member) count++;
+                return count;
+            }
+        }
+        public void SetOffering(bool offering)
+        {
+            if (!Active || HasWinner || IsOffering == offering) return;
+            IsOffering = offering;
+            foreach (var member in Members)
+            {
+                if (!member.School || !member.Fish.instance) continue;
+                member.BiteTime = 0f;
+                member.School.ResetGatheringRoute(member);
+            }
+        }
+        public void Cancel()
+        {
+            Active = false;
+            Race.Cancel();
+            IsOffering = false;
+            foreach (var member in Members)
+                if (member.Fish.gathering == member)
+                {
+                    member.Fish.gathering = null;
+                    member.Fish.returningFromFeeding = true;
+                    member.Fish.planningCooldown = member.Fish.cruiseRemaining = 0f;
+                }
+            Members.Clear();
+        }
+    }
+
+    /// <summary>Reserve the nearest eligible fish across all schools, before food is offered.</summary>
+    public static FeedingGroup GatherForFeeding(Transform viewer, Transform food, int foodColorIndex,
+        Color foodColor, int maximumFish, float distance, float radius, float searchRadius)
+    {
+        if (!viewer || !food || !food.gameObject.activeInHierarchy || maximumFish <= 0) return null;
+        var candidates = new List<GatheringMember>();
+        foreach (var school in FindObjectsByType<SummonFish>(FindObjectsSortMode.None))
+        {
+            if (!school.isActiveAndEnabled || school.gameObject.scene != viewer.gameObject.scene) continue;
+            foreach (var fish in school.activeFish)
+            {
+                if (!fish.instance || !fish.instance.activeInHierarchy || !fish.rootBone || fish.gathering != null || fish == school.feedingFish) continue;
+                if ((school.GetFeedingMouthPosition(fish) - viewer.position).sqrMagnitude > searchRadius * searchRadius) continue;
+                if (!fish.materialSwitcher) fish.materialSwitcher = fish.instance.GetComponentInChildren<StripedFishAnimatedQuadBillboard>();
+                if (!fish.materialSwitcher || !fish.materialSwitcher.isActiveAndEnabled ||
+                    !fish.materialSwitcher.TryGetFeedingVariant(foodColorIndex, foodColor, out int variant)) continue;
+                candidates.Add(new GatheringMember { School = school, Fish = fish, Variant = variant });
+            }
+        }
+        candidates.Sort((a,b) => (a.School.GetFeedingMouthPosition(a.Fish)-viewer.position).sqrMagnitude.CompareTo(
+            (b.School.GetFeedingMouthPosition(b.Fish)-viewer.position).sqrMagnitude));
+        if (candidates.Count == 0) return null;
+        var group = new FeedingGroup { Viewer = viewer, Food = food, FoodColor = foodColor,
+            Distance = Mathf.Max(1.5f,distance), Radius = Mathf.Clamp(radius,.2f,Mathf.Max(.2f,distance-.8f)) };
+        for (int i=0;i<Mathf.Min(maximumFish,candidates.Count);i++)
+        {
+            var member = candidates[i]; member.Group = group; member.Fish.gathering = member;
+            member.Fish.returningFromFeeding = false; group.Members.Add(member);
+            member.School.PickGatheringGoal(member); member.School.ResetGatheringRoute(member);
+        }
+        Debug.Log("[FishFeeding] " + group.Count + " nearby fish are gathering in front of the camera.");
+        return group;
+    }
+
+    private void PickGatheringGoal(GatheringMember member)
+    {
+        float radius = member.Group.Radius;
+        member.Offset = new Vector3(NextFloat(-radius,radius),NextFloat(-radius*.45f,radius*.45f),NextFloat(-radius*.45f,radius*.45f));
+        member.RoamTime = NextFloat(1.5f,3f);
+        member.Fish.planningCooldown = 0f;
+    }
+    private void ResetGatheringRoute(GatheringMember member)
+    {
+        var group = member.Group;
+        if (!group.Viewer || !group.Food) return;
+        Vector3 forward = FishFeedingApproach.Forward(group.Viewer.forward);
+        Vector3 mouth = GetFeedingMouthPosition(member.Fish);
+        float depth = Vector3.Dot(mouth-group.Viewer.position,forward);
+        member.Side = FishFeedingApproach.Side(mouth,group.Viewer.position,forward);
+        member.RearDepth = Mathf.Min(-.5f,depth);
+        member.Stage = depth < 0 ? 0 : group.IsOffering && FishFeedingApproach.InFront(mouth,group.Food.position,forward) ? 3 : 2;
+        member.Fish.planningCooldown = 0;
+    }
+
+    private void SimulateGathering(GatheringMember member,float dt)
+    {
+        dt = Mathf.Min(dt,.08f);
+        var group = member.Group; var fish = member.Fish;
+        if (!group.Active || !group.Viewer || !group.Food || !group.Food.gameObject.activeInHierarchy)
+        { group.Cancel(); return; }
+        Vector3 forward = FishFeedingApproach.Forward(group.Viewer.forward);
+        Vector3 right = Vector3.Cross(Vector3.up,forward);
+        Vector3 center = group.Viewer.position + forward*group.Distance;
+        Vector3 mouth = GetFeedingMouthPosition(fish);
+        if (!group.IsOffering)
+        {
+            member.RoamTime -= dt;
+            if (member.Stage == 3 && (member.RoamTime<=0 || Vector3.Distance(mouth,center+right*member.Offset.x+Vector3.up*member.Offset.y+forward*member.Offset.z)<.45f))
+                PickGatheringGoal(member);
+        }
+        Vector3 destination = group.IsOffering ? group.Food.position : center+right*member.Offset.x+Vector3.up*member.Offset.y+forward*member.Offset.z;
+        if ((member.Stage == 3 && group.IsOffering && !FishFeedingApproach.InFront(mouth,destination,forward)) ||
+            (member.Stage >= 2 && Vector3.Dot(mouth-group.Viewer.position,forward)<-.1f)) ResetGatheringRoute(member);
+        Vector3 goal = destination;
+        if (member.Stage == 0)
+        {
+            goal = FishFeedingApproach.SideWaypoint(group.Viewer.position,forward,destination,member.Side,feedingSideClearance,member.RearDepth);
+            if (Vector3.Distance(mouth,goal)<=feedingWaypointDistance) { member.Stage=1; fish.planningCooldown=0; }
+        }
+        if (member.Stage == 1)
+        {
+            goal = FishFeedingApproach.SideFrontWaypoint(group.Viewer.position,forward,destination,member.Side,feedingSideClearance,feedingFrontDistance);
+            if (Vector3.Distance(mouth,goal)<=feedingWaypointDistance) { member.Stage=2; fish.planningCooldown=0; }
+        }
+        if (member.Stage == 2)
+        {
+            goal = group.IsOffering ? FishFeedingApproach.FrontWaypoint(destination,forward,feedingFrontDistance) : destination;
+            if (Vector3.Distance(mouth,goal)<=feedingWaypointDistance) { member.Stage=3; fish.planningCooldown=0; goal=destination; }
+        }
+        bool inGatheringArea = !group.IsOffering && (mouth-center).sqrMagnitude < (group.Radius+1f)*(group.Radius+1f);
+        SimulateApproach(fish,fish.position+transform.InverseTransformVector(goal-mouth),dt,inGatheringArea ? .4f : 1f);
+        bool canEat = group.IsOffering && member.Stage==3 && Vector3.Dot(group.Food.position-group.Viewer.position,forward)>.05f &&
+            FishFeedingApproach.CanBite(GetFeedingMouthPosition(fish),group.Food.position,forward,transform.TransformDirection(fish.heading),feedingBiteDistance);
+        member.BiteTime = canEat ? member.BiteTime + dt : 0;
+        // All simulation runs on Unity's main thread. The first successful bite releases every reservation immediately.
+        if (canEat && member.BiteTime>=feedingBiteSeconds && !group.HasWinner && group.Active &&
+            fish.materialSwitcher && group.Race.TryConsume(() => fish.materialSwitcher.TryApplyFeedingColor(member.Variant,group.FoodColor)))
+        {
+            group.Food.gameObject.SetActive(false);
+            Debug.Log("[FishFeeding] " + fish.instance.name + " won the food; other fish return to normal swimming.",fish.instance);
+            group.Cancel();
+        }
     }
 
     private struct ObstacleSphere
@@ -109,8 +276,122 @@ public sealed class SummonFish : MonoBehaviour
     private System.Random random;
     private Transform fishContainer;
     private readonly List<ObstacleSphere> obstacleSpheres = new List<ObstacleSphere>();
+    [Header("Feeding")]
+    [SerializeField, Min(0.01f)] private float feedingBiteDistance = 0.35f;
+    [SerializeField, Min(0f)] private float feedingBiteSeconds = 0.3f;
+    [SerializeField, Min(0.5f), InspectorName("餌の前方で待つ距離")]
+    private float feedingFrontDistance = 1.2f;
+    [SerializeField, Min(0.5f), InspectorName("ダイバーの横を通る距離")]
+    private float feedingSideClearance = 1.2f;
+    [SerializeField, Min(0.05f), InspectorName("回り込み地点の到着距離")]
+    private float feedingWaypointDistance = 0.35f;
+    private FishAgent feedingFish;
+    private Transform feedingTarget;
+    private Transform feedingViewer;
+    private int feedingApproachStage; // 0: move sideways, 1: pass beside diver, 2: front of food, 3: bite
+    private float feedingApproachSide, feedingRearDepth;
+    private int feedingVariantIndex;
+    private Color? feedingFoodColor;
+    private float feedingBiteElapsed;
+    public bool FeedingCompleted { get; private set; }
+    public bool HasActiveFeedingRequest => feedingTarget != null &&
+        (FeedingCompleted || (feedingFish != null && feedingFish.instance && feedingFish.rootBone &&
+            feedingFish.instance.activeInHierarchy && feedingFish.materialSwitcher && feedingFish.materialSwitcher.isActiveAndEnabled));
 
     public int FishCount => activeFish.Count;
+
+    public bool TryGetFeedingCandidateDistance(Vector3 foodPosition, int foodColorIndex, out float squaredDistance,
+        Color? foodColor = null, Transform viewer = null, bool frontOnly = false)
+    {
+        if (!viewer && Camera.main) viewer = Camera.main.transform;
+        return FindFeedingCandidate(foodPosition, foodColorIndex, foodColor, viewer, frontOnly, out _, out _, out squaredDistance);
+    }
+
+    private bool FindFeedingCandidate(Vector3 foodPosition, int foodColorIndex, Color? foodColor, Transform viewer, bool frontOnly,
+        out FishAgent candidate, out int variantIndex, out float squaredDistance)
+    {
+        candidate = null;
+        variantIndex = -1;
+        squaredDistance = float.PositiveInfinity;
+        if (feedingTarget != null || !viewer) return false;
+        Vector3 forward = FishFeedingApproach.Forward(viewer.forward);
+        if (Vector3.Dot(foodPosition - viewer.position, forward) < 0.05f) return false;
+        bool candidateInFront = false;
+        foreach (FishAgent fish in activeFish)
+        {
+            if (!fish.instance || !fish.instance.activeInHierarchy || !fish.rootBone) continue;
+            if (!fish.materialSwitcher) fish.materialSwitcher = fish.instance.GetComponentInChildren<StripedFishAnimatedQuadBillboard>();
+            if (!fish.materialSwitcher || !fish.materialSwitcher.isActiveAndEnabled) continue;
+            int variant;
+            bool canFeed = foodColor.HasValue
+                ? fish.materialSwitcher.TryGetFeedingVariant(foodColorIndex, foodColor.Value, out variant)
+                : fish.materialSwitcher.TryGetFeedingVariant(foodColorIndex, out variant);
+            if (!canFeed) continue;
+            Vector3 mouth = GetFeedingMouthPosition(fish);
+            bool inFront = FishFeedingApproach.InFront(mouth, foodPosition, forward);
+            if (frontOnly && !inFront) continue;
+            float distance = (mouth - foodPosition).sqrMagnitude;
+            if (!FishFeedingApproach.PreferCandidate(inFront, distance, candidate != null, candidateInFront, squaredDistance)) continue;
+            squaredDistance = distance;
+            candidate = fish;
+            candidateInFront = inFront;
+            variantIndex = variant;
+        }
+        return candidate != null;
+    }
+
+    public bool TryBeginFeeding(Transform foodTarget, int foodColorIndex, Color? foodColor = null, Transform viewer = null)
+    {
+        if (!viewer && Camera.main) viewer = Camera.main.transform;
+        if (!foodTarget || !FindFeedingCandidate(foodTarget.position, foodColorIndex, foodColor, viewer, false,
+            out FishAgent candidate, out int variantIndex, out _)) return false;
+        feedingFish = candidate;
+        feedingTarget = foodTarget;
+        feedingViewer = viewer;
+        ResetFeedingApproach(GetFeedingMouthPosition(candidate), FishFeedingApproach.Forward(viewer.forward));
+        feedingVariantIndex = variantIndex;
+        feedingFoodColor = foodColor;
+        feedingBiteElapsed = 0f;
+        FeedingCompleted = false;
+        feedingFish.planningCooldown = 0f;
+        Debug.Log($"[FishFeeding] {candidate.instance.name} is approaching food color {foodColorIndex} (material variant {variantIndex}).", candidate.instance);
+        return true;
+    }
+
+    public void CancelFeeding(Transform foodTarget)
+    {
+        if (feedingTarget != foodTarget) return;
+        if (feedingFish != null)
+        {
+            feedingFish.returningFromFeeding = true;
+            feedingFish.planningCooldown = 0f;
+            feedingFish.cruiseRemaining = 0f;
+        }
+        feedingFish = null;
+        feedingTarget = null;
+        feedingViewer = null;
+        feedingApproachStage = 0;
+        feedingBiteElapsed = 0f;
+        FeedingCompleted = false;
+    }
+
+    private Vector3 GetFeedingMouthPosition(FishAgent fish)
+    {
+        return fish.instance.transform.TransformPoint(fish.rootOffsetInInstance) +
+            transform.TransformVector(fish.position - fish.spawnPosition) +
+            fish.instance.transform.TransformVector(fish.species.feedingMouthLocalOffset);
+    }
+
+    private void ResetFeedingApproach(Vector3 mouth, Vector3 forward)
+    {
+        float depth = Vector3.Dot(mouth - feedingViewer.position, forward);
+        feedingApproachSide = FishFeedingApproach.Side(mouth, feedingViewer.position, forward);
+        feedingRearDepth = Mathf.Min(-0.5f, depth);
+        // Even frontal fish visit the front waypoint so the final approach points toward the diver.
+        feedingApproachStage = depth < 0f ? 0 : 2;
+        feedingBiteElapsed = 0f;
+        if (feedingFish != null) feedingFish.planningCooldown = 0f;
+    }
 
     private void Awake()
     {
@@ -274,6 +555,78 @@ public sealed class SummonFish : MonoBehaviour
 
     private void SimulateFish(FishAgent fish, float dt)
     {
+        if (fish.gathering != null) { SimulateGathering(fish.gathering,dt); return; }
+        if (fish == feedingFish && feedingTarget && !FeedingCompleted)
+        {
+            if (!feedingViewer) { CancelFeeding(feedingTarget); return; }
+            Vector3 forward = FishFeedingApproach.Forward(feedingViewer.forward);
+            Vector3 mouth = GetFeedingMouthPosition(fish);
+            if (Vector3.Dot(feedingTarget.position - feedingViewer.position, forward) < 0.05f)
+            { CancelFeeding(feedingTarget); return; }
+            // Turning the view or moving the hand must never allow a rear-side bite.
+            if ((feedingApproachStage == 3 && !FishFeedingApproach.InFront(mouth, feedingTarget.position, forward)) ||
+                (feedingApproachStage == 2 && Vector3.Dot(mouth - feedingViewer.position, forward) < -0.1f))
+                ResetFeedingApproach(mouth, forward);
+            Vector3 goal = feedingTarget.position;
+            if (feedingApproachStage == 0)
+            {
+                goal = FishFeedingApproach.SideWaypoint(feedingViewer.position, forward, feedingTarget.position,
+                    feedingApproachSide, Mathf.Max(0.5f, feedingSideClearance), feedingRearDepth);
+                if (Vector3.Distance(mouth, goal) <= feedingWaypointDistance)
+                { feedingApproachStage = 1; fish.planningCooldown = 0f; }
+            }
+            if (feedingApproachStage == 1)
+            {
+                goal = FishFeedingApproach.SideFrontWaypoint(feedingViewer.position, forward, feedingTarget.position,
+                    feedingApproachSide, Mathf.Max(0.5f, feedingSideClearance), Mathf.Max(0.5f, feedingFrontDistance));
+                if (Vector3.Distance(mouth, goal) <= feedingWaypointDistance)
+                { feedingApproachStage = 2; fish.planningCooldown = 0f; }
+            }
+            if (feedingApproachStage == 2)
+            {
+                float distance = Mathf.Max(feedingBiteDistance + feedingWaypointDistance + 0.1f, feedingFrontDistance);
+                goal = FishFeedingApproach.FrontWaypoint(feedingTarget.position, forward, distance);
+                if (Vector3.Distance(mouth, goal) <= feedingWaypointDistance && FishFeedingApproach.InFront(mouth, feedingTarget.position, forward))
+                { feedingApproachStage = 3; fish.planningCooldown = 0f; goal = feedingTarget.position; }
+            }
+            Vector3 target = fish.position + transform.InverseTransformVector(goal - mouth);
+            SimulateApproach(fish, target, dt);
+            if (feedingApproachStage == 3 && FishFeedingApproach.CanBite(GetFeedingMouthPosition(fish),
+                feedingTarget.position, forward, transform.TransformDirection(fish.heading), feedingBiteDistance))
+            {
+                feedingBiteElapsed += dt;
+                if (feedingBiteElapsed >= feedingBiteSeconds)
+                {
+                    if (fish.materialSwitcher && fish.materialSwitcher.TryApplyFeedingColor(feedingVariantIndex, feedingFoodColor))
+                    {
+                        Debug.Log($"[FishFeeding] {fish.instance.name} ate the food and changed material.", fish.instance);
+                        FeedingCompleted = true;
+                        fish.returningFromFeeding = true;
+                        fish.planningCooldown = 0f;
+                        fish.cruiseRemaining = 0f;
+                        feedingFish = null;
+                    }
+                    else CancelFeeding(feedingTarget);
+                }
+            }
+            else feedingBiteElapsed = 0f;
+            return;
+        }
+        if (fish.returningFromFeeding)
+        {
+            Vector3 clamped = new Vector3(Mathf.Clamp(fish.position.x, -halfWidth, halfWidth),
+                Mathf.Clamp(fish.position.y, localHeight - halfHeight, localHeight + halfHeight),
+                Mathf.Clamp(fish.position.z, -halfDepth, halfDepth));
+            if ((clamped - fish.position).sqrMagnitude > 0.000001f)
+            {
+                Vector3 inner = new Vector3(Mathf.Clamp(fish.position.x, -halfWidth * 0.9f, halfWidth * 0.9f),
+                    Mathf.Clamp(fish.position.y, localHeight - halfHeight * 0.9f, localHeight + halfHeight * 0.9f),
+                    Mathf.Clamp(fish.position.z, -halfDepth * 0.9f, halfDepth * 0.9f));
+                SimulateApproach(fish, inner, dt);
+                return;
+            }
+            fish.returningFromFeeding = false;
+        }
         float maxSpeed = Mathf.Max(0.01f, fish.species.maxSpeed);
         float maxAcceleration = Mathf.Max(0.01f, fish.species.maxAcceleration);
         float maxAngularVelocity = Mathf.Max(1f, fish.species.maxAngularVelocity);
@@ -345,8 +698,35 @@ public sealed class SummonFish : MonoBehaviour
         ApplyFishPose(fish);
     }
 
+    private void SimulateApproach(FishAgent fish, Vector3 target, float dt, float speedScale = 1f)
+    {
+        dt = Mathf.Min(dt, 0.08f);
+        Vector3 delta = target - fish.position;
+        float distance = delta.magnitude;
+        if (distance < 0.0001f) { fish.speed = 0f; ApplyFishPose(fish); return; }
+        Vector3 desired = delta / distance;
+        float maxAngularVelocity = Mathf.Max(1f, fish.species.maxAngularVelocity);
+        fish.planningCooldown -= dt;
+        if (fish.planningCooldown <= 0f)
+        {
+            fish.targetHeading = ChooseSafeHeading(fish.position, fish.heading, desired, fish.targetHeading,
+                Mathf.Max(0.1f, fish.speed), fish.turnRate, maxAngularVelocity, 0.8f, true);
+            fish.planningCooldown = routeCheckInterval;
+        }
+        fish.turnRate = Mathf.MoveTowards(fish.turnRate, maxAngularVelocity, maxAngularVelocity * 1.5f * dt);
+        fish.heading = Vector3.RotateTowards(fish.heading, fish.targetHeading,
+            fish.turnRate * Mathf.Deg2Rad * dt, 0f).normalized;
+        float acceleration = Mathf.Max(0.01f, fish.species.maxAcceleration);
+        float targetSpeed = Mathf.Min(fish.species.maxSpeed * speedScale, Mathf.Sqrt(2f * acceleration * distance));
+        targetSpeed *= Mathf.Clamp01(Vector3.Dot(fish.heading, desired) + 0.1f);
+        fish.speed = Mathf.MoveTowards(fish.speed, targetSpeed, acceleration * dt);
+        fish.position += fish.heading * Mathf.Min(fish.speed * dt, distance);
+        ApplyFishPose(fish);
+    }
+
     private Vector3 ChooseSafeHeading(Vector3 start, Vector3 currentHeading, Vector3 preferredHeading,
-        Vector3 previousPlan, float speed, float currentTurnRate, float maxAngularVelocity, float horizon)
+        Vector3 previousPlan, float speed, float currentTurnRate, float maxAngularVelocity, float horizon,
+        bool allowOutsideArea = false)
     {
         Vector3 bestHeading = preferredHeading;
         float bestCost = float.PositiveInfinity;
@@ -387,7 +767,7 @@ public sealed class SummonFish : MonoBehaviour
                         Mathf.Clamp(simulatedPosition.y, localHeight - halfHeight, localHeight + halfHeight),
                         Mathf.Clamp(simulatedPosition.z, -halfDepth, halfDepth));
                     float boundaryError = (simulatedPosition - clamped).magnitude;
-                    if (boundaryError > 0f)
+                    if (!allowOutsideArea && boundaryError > 0f)
                         cost += 80f + boundaryError * boundaryError * 50f;
 
                     for (int obstacle = 0; obstacle < obstacleSpheres.Count; obstacle++)
@@ -616,7 +996,9 @@ public sealed class SummonFish : MonoBehaviour
                 continue;
             }
 
-            instance.AddComponent(componentType);
+            Component added = instance.AddComponent(componentType);
+            if (added is StripedFishAnimatedQuadBillboard striped && template is StripedFishAnimatedQuadBillboard stripedTemplate)
+                striped.CopyMaterialVariantsFrom(stripedTemplate);
         }
     }
 

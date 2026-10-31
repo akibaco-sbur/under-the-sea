@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09db0d36568645d9b0168a13ac0167ff, type: 3}
+  m_Name: PrimaryFishColorSet
+  m_EditorClassIdentifier: Assembly-CSharp::FishMaterialColorSet
+  materials:
+  - {fileID: 2100000, guid: 3104198fc3864960ad7921d4ae11a218, type: 2}
+  - {fileID: 2100000, guid: ac6749d05c24479c8ccadf84e5d0625d, type: 2}
+  - {fileID: 2100000, guid: 29b196ceabf44349b27b7c20a94b3b42, type: 2}
+  - {fileID: 2100000, guid: 16bbb8939fad430d932a1895a65bd7c7, type: 2}
+  - {fileID: 2100000, guid: 39e92a0348f148e8bf243eec2a8fd6f8, type: 2}
+  - {fileID: 2100000, guid: 06dbb745843b40268cd46248b56fb190, type: 2}

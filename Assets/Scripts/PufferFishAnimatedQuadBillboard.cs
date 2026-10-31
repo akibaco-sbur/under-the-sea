@@ -350,6 +350,15 @@ public sealed class PufferFishAnimatedQuadBillboard : MonoBehaviour
     void LateUpdate()
     {
         if (!source || !targetCamera || !outputMesh || outputTransform == null) return;
+        if (outputVertexSource == null || outputVertexSource.Length == 0) return;
+        // Readonly scratch lists can be recreated empty by a Play Mode script
+        // reload while the output mesh and vertex mapping survive the reload.
+        if (projectedVertices.Count != outputVertexSource.Length)
+        {
+            projectedVertices.Clear();
+            for (int i = 0; i < outputVertexSource.Length; i++)
+                projectedVertices.Add(Vector3.zero);
+        }
         source.BakeMesh(bakedMesh);
         bakedVertices.Clear();
         bakedMesh.GetVertices(bakedVertices);
