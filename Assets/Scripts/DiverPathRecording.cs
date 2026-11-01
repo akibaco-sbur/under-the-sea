@@ -10,6 +10,15 @@ public sealed class DiverPathRecording
         public Point(float x,float y,float z) { X=x; Y=y; Z=z; }
     }
     readonly List<Point> points = new List<Point>();
+    public struct FeedingEvent { public Point Position;public float R,G,B; }
+    readonly List<FeedingEvent> feedingEvents=new List<FeedingEvent>();
+    public IReadOnlyList<FeedingEvent> FeedingEvents=>feedingEvents;
+    public bool RecordFeeding(float x,float y,float z,float r,float g,float b)
+    {
+        if(feedingEvents.Count>=128 || float.IsNaN(x)||float.IsNaN(y)||float.IsNaN(z)||float.IsInfinity(x)||float.IsInfinity(y)||float.IsInfinity(z) ||
+            float.IsNaN(r)||float.IsNaN(g)||float.IsNaN(b)||float.IsInfinity(r)||float.IsInfinity(g)||float.IsInfinity(b))return false;
+        feedingEvents.Add(new FeedingEvent{Position=new Point(x,y,z),R=r,G=g,B=b});return true;
+    }
     readonly int capacity;
     float spacing;
     Point lastSample;

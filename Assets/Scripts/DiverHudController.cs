@@ -37,8 +37,6 @@ public sealed class DiverHudController : MonoBehaviour
     Camera view;
     Font font;
     bool ownsFont;
-    Rect previousSafeArea;
-    Vector2 previousScreen;
     float heading, headingVelocity, nextReadout, nextFind;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -313,7 +311,7 @@ public sealed class DiverHudController : MonoBehaviour
         borderSignalLabel.rectTransform.anchorMin=borderSignalLabel.rectTransform.anchorMax=new Vector2(.5f,1);
         borderSignalLabel.rectTransform.pivot=new Vector2(.5f,1);borderSignalLabel.rectTransform.anchoredPosition=new Vector2(0,-140);
         borderSignalLabel.alignment=TextAnchor.MiddleCenter;borderSignalLabel.gameObject.SetActive(false);
-        interference=new DiverBorderInterference(canvas.transform,font);
+        interference=new DiverBorderInterference(canvas.transform,font,safeRoot);
         interference.AddGauge((RectTransform)voiceGroup.transform);
         interference.AddGauge((RectTransform)motionGroup.transform);
         interference.AddGauge((RectTransform)headingGroup.transform);
@@ -347,12 +345,7 @@ public sealed class DiverHudController : MonoBehaviour
 
     void ApplySafeArea()
     {
-        Rect area=Screen.safeArea; var size=new Vector2(Screen.width,Screen.height);
-        if (size.x<=0f || size.y<=0f || (previousSafeArea==area && previousScreen==size)) return;
-        previousSafeArea=area; previousScreen=size;
-        safeRoot.anchorMin=new Vector2(area.xMin/size.x,area.yMin/size.y);
-        safeRoot.anchorMax=new Vector2(area.xMax/size.x,area.yMax/size.y);
-        safeRoot.offsetMin=safeRoot.offsetMax=Vector2.zero;
+        DiverProjectionLayout.Apply(safeRoot,canvas);
     }
     RectTransform Panel(string name, Vector2 anchor, Vector2 position, Vector2 size)
     {

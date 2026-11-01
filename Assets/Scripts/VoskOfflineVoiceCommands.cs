@@ -23,6 +23,12 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
     [Tooltip("Model folder under StreamingAssets, or a .zip archive there. ZIP models are extracted once to persistentDataPath.")]
     [SerializeField] private string modelFolderName = "vosk-model-ja-0.22.zip";
     [SerializeField, Range(8000, 48000)] private int requestedMicrophoneRate = 16000;
+    [Header("USB microphone")]
+    [Tooltip("完全一致を優先し、一意な部分一致も使用します。空欄はUSBを検索します。複数候補や未接続時に内蔵マイクへ切り替えません。変更はPlayを再実行して反映します。")]
+    [SerializeField, InspectorName("入力マイク名")] private string preferredMicrophoneName = "WUP-021-0";
+    [SerializeField, TextArea(2,6), InspectorName("検出マイク一覧（確認用）")] private string availableMicrophones;
+    [SerializeField, InspectorName("選択されたマイク（確認用）")] private string selectedMicrophoneName;
+    private float microphoneStartedAt;
 
     [Header("Kinect gate")]
     [SerializeField] private bool palmUpRequiredForFeeding = true;
@@ -102,13 +108,18 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         loggedFirstAudioChunk = false;
         nextStorageCheck = 0f;
         nextAudioWarning = 0f;
-        if (Microphone.devices == null || Microphone.devices.Length == 0)
+        string[] devices=Microphone.devices;
+        availableMicrophones=devices!=null?string.Join("\n",devices):"";
+        selectedMicrophoneName="";
+        Debug.Log("[Vosk] Available microphones:\n"+availableMicrophones,this);
+        if (!VoskMicrophoneSelection.TrySelect(devices,preferredMicrophoneName,out microphoneDevice,out string selectionError))
         {
-            Debug.LogError("[Vosk] No microphone available. Model loading was skipped.", this);
+            Debug.LogError("[Vosk] "+selectionError+" Model loading was skipped; no fallback microphone was used.", this);
             enabled = false;
             yield break;
         }
-        microphoneDevice = Microphone.devices[0];
+        selectedMicrophoneName=microphoneDevice;
+        Debug.Log("[Vosk] Selected microphone: "+microphoneDevice,this);
         if (keyboardFeedingTestMode)
             Debug.Log("[Vosk] Feeding keyboard test mode is active; speech recognition remains enabled.", this);
         try
@@ -143,8 +154,11 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         }
         try
         {
-            microphoneClip = Microphone.Start(microphoneDevice, true, 1, requestedMicrophoneRate);
+            Microphone.GetDeviceCaps(microphoneDevice,out int minimumRate,out int maximumRate);
+            int inputRate=VoskMicrophoneSelection.InputRate(requestedMicrophoneRate,minimumRate,maximumRate);
+            microphoneClip = Microphone.Start(microphoneDevice, true, 1, inputRate);
             if (microphoneClip == null) throw new InvalidOperationException("Microphone could not be started.");
+            microphoneStartedAt=Time.realtimeSinceStartup;
             microphoneBuffer = new float[ChunkFrames * microphoneClip.channels];
             Debug.Log($"[Vosk] Microphone started: device={microphoneDevice}, frequency={microphoneClip.frequency}, channels={microphoneClip.channels}.", this);
         }
@@ -197,8 +211,17 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
             }
         }
         bool waitingForPlayer = DiverStartupGate.IsBlocked(gameObject.scene);
-        if (session.Ready && microphoneClip != null && Microphone.IsRecording(microphoneDevice))
+        if (session.Ready && microphoneClip != null)
         {
+            bool recording=false;
+            try {recording=Microphone.IsRecording(microphoneDevice);}
+            catch(Exception exception){Debug.LogError("[Vosk] Microphone unavailable: "+exception.Message,this);enabled=false;return;}
+            if(!recording)
+            {
+                if(Time.realtimeSinceStartup-microphoneStartedAt>3f)
+                {Debug.LogError("[Vosk] Selected microphone stopped or disconnected: "+microphoneDevice+". No fallback device was opened.",this);enabled=false;}
+                return;
+            }
             if (waitingForPlayer) microphoneCursor = Mathf.Max(0, Microphone.GetPosition(microphoneDevice));
             else CaptureAvailableAudio();
         }
@@ -214,13 +237,36 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
 
     /// <summary>Call from the Kinect hand tracker whenever palm orientation changes.</summary>
     public void SetPalmFacingUp(bool value) => palmUp = value;
+    [ContextMenu("利用可能マイクをConsoleに表示")]
+    public void ListAvailableMicrophones()
+    {
+        var devices=Microphone.devices;
+        availableMicrophones=devices!=null?string.Join("\n",devices):"";
+        Debug.Log("[Vosk] Available microphones:\n"+availableMicrophones,this);
+    }
+    [ContextMenu("本番設定をConsoleで確認")]
+    public void CheckExhibitionSettings()
+    {
+        ListAvailableMicrophones();
+        if(keyboardFeedingTestMode)Debug.LogWarning("[Exhibition] Keyboard Feeding Test Mode is ON: actual Kinect input is bypassed.",this);
+        if(keyboardControlTestMode)Debug.LogWarning("[Exhibition] Development keyboard controls are ON.",this);
+        if(!palmUpRequiredForFeeding)Debug.LogWarning("[Exhibition] Palm-up gate is OFF.",this);
+        if(!Application.runInBackground)Debug.LogWarning("[Exhibition] Run In Background is OFF. Losing focus can suspend the experience.",this);
+        string runtime=System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath,"../.Local/AzureKinect/Runtime"));
+        if(!System.IO.File.Exists(System.IO.Path.Combine(runtime,"k4abt.dll")))Debug.LogWarning("[Exhibition] Kinect Runtime not found at: "+runtime,this);
+        Debug.Log("[Exhibition] Preferred microphone: "+preferredMicrophoneName+"; model: "+modelFolderName+"; settings/results directory: "+Application.persistentDataPath,this);
+    }
+    public bool IsPalmFacingUp=>palmUp;
+    public float PalmFacingUpDot {get;private set;}=float.NaN;
+    public float PalmFacingUpThreshold=>palmUpDotThreshold;
 
     /// <summary>Update the feeding gate from the Kinect hand joint's sensor-space orientation.</summary>
     public void SetPalmOrientation(Quaternion handRotation, bool tracked)
     {
         Vector3 localNormal = palmNormalLocalAxis.sqrMagnitude > 1e-6f
             ? palmNormalLocalAxis.normalized : Vector3.up;
-        palmUp = tracked && Vector3.Dot(handRotation * localNormal, Vector3.up) >= palmUpDotThreshold;
+        PalmFacingUpDot=tracked?Vector3.Dot(handRotation * localNormal, Vector3.up):float.NaN;
+        palmUp = tracked && PalmFacingUpDot >= palmUpDotThreshold;
     }
 
     private void CaptureAvailableAudio()

@@ -26,6 +26,16 @@ public sealed class DiverRetreatController : MonoBehaviour
     float nextSample, replayTime, nextFind;
     DiverPathGraphic line;
     RectTransform replayProgress;
+    RectTransform projectionContent;
+    public static void RecordFeeding(Scene scene,Color foodColor)
+    {
+        var owner=Ensure(scene);if(!owner || owner.retreating || DiverStartupGate.IsBlocked(scene))return;
+        if(!owner.diver)owner.diver=owner.FindSource<DiverViewController>();
+        if(!owner.diver || !owner.diver.BodyRoot)return;
+        owner.Sample(true);
+        Vector3 p=owner.diver.BodyRoot.position;
+        owner.path.RecordFeeding(p.x,p.y,p.z,foodColor.r,foodColor.g,foodColor.b);
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Install()
@@ -66,6 +76,7 @@ public sealed class DiverRetreatController : MonoBehaviour
     }
     void Update()
     {
+        if(projectionContent && canvas)DiverProjectionLayout.Apply(projectionContent,canvas);
         if(Time.unscaledTime>=nextFind && !retreating)
         {
             nextFind=Time.unscaledTime+1;
@@ -123,6 +134,8 @@ public sealed class DiverRetreatController : MonoBehaviour
             if(System.Array.Exists(Font.GetOSInstalledFontNames(),v=>v==candidate)) {font=Font.CreateDynamicFontFromOSFont(candidate,28);ownsFont=true;break;}
         if(!font)font=Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         shade=FullRect("Blackout",root.transform).gameObject.AddComponent<Image>();shade.color=Color.clear;shade.raycastTarget=false;
+        projectionContent=FullRect("ProjectionContent",root.transform);
+        DiverProjectionLayout.Apply(projectionContent,canvas);
         status=Label("ROBOT SHUTDOWN",new Vector2(.08f,.43f),new Vector2(.92f,.57f),32);
     }
     IEnumerator ShutdownAndReview()
@@ -141,8 +154,8 @@ public sealed class DiverRetreatController : MonoBehaviour
         float width=Mathf.Max(.01f,bounds.size.x), height=Mathf.Max(.01f,bounds.size.z);
         shade.color=new Color(.012f,.025f,.04f,1);
         float gridStep = DiverRouteGrid.Step(width,height);
-        replayProgress=DiverRouteReviewSkin.Build(canvas.transform,font,sessionClock,path.Distance,path.Points.Count,bounds,gridStep);
-        RectTransform area=FullRect("RouteArea",canvas.transform);area.anchorMin=new Vector2(.27f,.23f);area.anchorMax=new Vector2(.73f,.83f);
+        replayProgress=DiverRouteReviewSkin.Build(projectionContent,font,sessionClock,path.Distance,path.Points.Count,bounds,gridStep,path.FeedingEvents.Count);
+        RectTransform area=FullRect("RouteArea",projectionContent);area.anchorMin=new Vector2(.27f,.23f);area.anchorMax=new Vector2(.73f,.83f);
         RectTransform panel=FullRect("SeaBedBoundary",area);
         var fit=panel.gameObject.AddComponent<AspectRatioFitter>();fit.aspectMode=AspectRatioFitter.AspectMode.FitInParent;fit.aspectRatio=width/height;
         var background=panel.gameObject.AddComponent<Image>();background.color=Color.white;background.raycastTarget=false;
@@ -152,6 +165,19 @@ public sealed class DiverRetreatController : MonoBehaviour
         var projected=new Vector2[path.Points.Count];
         for(int i=0;i<projected.Length;i++) {var p=path.Points[i];projected[i]=new Vector2(.5f+(p.X-bounds.center.x)/width,.5f+(p.Z-bounds.center.z)/height);}
         line.SetPath(projected);line.SetProgress(0);
+        for(int i=0;i<path.FeedingEvents.Count;i++)
+        {
+            var e=path.FeedingEvents[i];
+            var marker=FullRect("Feeding"+(i+1),panel);
+            marker.anchorMin=marker.anchorMax=new Vector2(.5f+(e.Position.X-bounds.center.x)/width,.5f+(e.Position.Z-bounds.center.z)/height);
+            marker.sizeDelta=new Vector2(14,14);
+            var border=marker.gameObject.AddComponent<Image>();border.color=new Color(.05f,.2f,.3f);border.raycastTarget=false;
+            var dot=FullRect("FoodColor",marker);dot.offsetMin=new Vector2(3,3);dot.offsetMax=new Vector2(-3,-3);
+            var fill=dot.gameObject.AddComponent<Image>();fill.color=new Color(e.R,e.G,e.B);fill.raycastTarget=false;
+            var caption=FullRect("FeedingNumber",marker);caption.anchorMin=caption.anchorMax=new Vector2(1,.5f);caption.pivot=new Vector2(0,.5f);caption.anchoredPosition=new Vector2(4,6);caption.sizeDelta=new Vector2(65,22);
+            var text=caption.gameObject.AddComponent<Text>();text.font=font;text.fontSize=14;text.text="F"+(i+1).ToString("00");text.color=new Color(.05f,.2f,.3f);text.raycastTarget=false;
+        }
+        Label("F01…：餌やり成功地点  /  印の色＝餌色",new Vector2(.27f,.185f),new Vector2(.73f,.22f),15);
         DrawBorder(panel, new Vector2(0,0),new Vector2(1,0),new Vector2(0,2));
         DrawBorder(panel, new Vector2(0,1),new Vector2(1,1),new Vector2(0,2));
         DrawBorder(panel, new Vector2(0,0),new Vector2(0,1),new Vector2(2,0));
@@ -216,7 +242,7 @@ public sealed class DiverRetreatController : MonoBehaviour
     }
     Text Label(string text,Vector2 min,Vector2 max,int size)
     {
-        var r=FullRect("Readout",canvas.transform);r.anchorMin=min;r.anchorMax=max;
+        var r=FullRect("Readout",projectionContent?projectionContent:canvas.transform);r.anchorMin=min;r.anchorMax=max;
         var label=r.gameObject.AddComponent<Text>();label.font=font;label.text=text;label.fontSize=size;label.alignment=TextAnchor.MiddleCenter;label.color=new Color(.5f,1,.95f);label.raycastTarget=false;return label;
     }
     void OnDisable(){StopAllCoroutines();if(canvas)canvas.gameObject.SetActive(false);}

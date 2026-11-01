@@ -45,6 +45,11 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
     public bool IsPreparingToFeed => feedingAlignment != null;
     public bool IsFeedingActive => isActiveAndEnabled && (IsPreparingToFeed || (trayRoot != null && trayRoot.gameObject.activeInHierarchy));
     public bool IsKeyboardTest => keyboardTestMode;
+    public ScoopFeedingState DiagnosticState=>interaction?interaction.State:ScoopFeedingState.AwaitEntry;
+    public bool DiagnosticContact=>interaction && interaction.IsTouchingFood;
+    public Vector3 DiagnosticPalmPosition=>handTarget?handTarget.position:lastHandPosition;
+    public Vector3 DiagnosticTrayPosition=>trayRoot?trayRoot.position:Vector3.zero;
+    public Vector3 DiagnosticFoodPosition=>food?food.transform.position:Vector3.zero;
     public Color CurrentFoodColor => currentFoodColor;
     public float FeedingProgress => IsPreparingToFeed || interaction == null ? 0f : dispersed ? 1f :
         interaction.IsOffering ? 1f : interaction.State == ScoopFeedingState.Armed ? interaction.LiftProgress : 0f;
@@ -446,6 +451,7 @@ public sealed class DiverFeedingFoodController : MonoBehaviour
     private void DisperseFood()
     {
         if(dispersed)return;
+        DiverRetreatController.RecordFeeding(gameObject.scene,currentFoodColor);
         DiverAudioController.PlayFeeding(gameObject.scene);
         CancelFishFeeding();
         dispersed = true;
