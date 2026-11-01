@@ -281,6 +281,17 @@ public sealed class DiverViewController : MonoBehaviour
         targetYaw = 0f;
     }
 
+    internal void PrepareNextExperience(Vector3 position, Quaternion rotation)
+    {
+        InterruptActionAlignment();
+        bodyTurning = aligningToView = movingSteering = false;
+        IsFeedingControlLocked = false;
+        pitch = yaw = targetPitch = targetYaw = 0f;
+        pitchSmoothVelocity = yawSmoothVelocity = 0f;
+        movementCounterLean = 0f;
+        ResolveBodyRoot().SetPositionAndRotation(position, rotation);
+    }
+
     private void InterruptActionAlignment()
     {
         alignmentVersion++;

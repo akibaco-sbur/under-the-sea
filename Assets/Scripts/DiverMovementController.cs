@@ -8,6 +8,10 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class DiverMovementController : MonoBehaviour
 {
+    [SerializeField, InspectorName("操作開始時に自動で前進"), Tooltip("認識・起動演出の完了後、一度だけ前進を開始します。停止後は自動再開しません。Mainシーンのみ。")]
+    private bool moveForwardOnExperienceStart = true;
+    private bool startupMovementHandled;
+
     [Header("Movement")]
     [SerializeField] private Transform movementRoot;
     [SerializeField] private Transform movementReference;
@@ -82,6 +86,11 @@ public sealed class DiverMovementController : MonoBehaviour
         if (worldBorder && worldBorder.IsReady && movementRoot)
             movementRoot.position = worldBorder.Constrain(movementRoot.position);
         if (DiverStartupGate.IsBlocked(gameObject.scene)) { ResetMovement(); borderBraking=false; borderIdle.Reset(); return; }
+        if (!startupMovementHandled && gameObject.scene.name == "Main")
+        {
+            startupMovementHandled = true;
+            if (moveForwardOnExperienceStart) MoveForward();
+        }
         if (viewController) viewController.SetMovingSteering(moving && !pendingForward);
         if (pendingForward)
         {
@@ -276,6 +285,14 @@ public sealed class DiverMovementController : MonoBehaviour
         pendingForward = false;
         moving = false;
         speed = 0f;
+    }
+
+    internal void PrepareNextExperience()
+    {
+        ResetMovement();
+        startupMovementHandled = false;
+        borderBraking = false;
+        borderIdle.Reset();
     }
 
     private void OnDisable()

@@ -79,6 +79,8 @@ public sealed class DiverHudController : MonoBehaviour
 
     public void BeginRobotBoot(float seconds)
     {
+        shuttingDown = false;
+        shutdownProgress = 0f;
         boot = new RobotHudBootSequence(seconds);
         canvas.gameObject.SetActive(true);
         ApplyRobotBoot();
@@ -90,6 +92,15 @@ public sealed class DiverHudController : MonoBehaviour
         ApplyRobotBoot();
     }
     public void CancelRobotBoot() { boot = null; ApplyRobotBoot(); }
+
+    internal void PrepareNextExperience()
+    {
+        boot = null;
+        shuttingDown = false;
+        shutdownProgress = 0f;
+        interference?.Reset();
+        if (canvas) canvas.gameObject.SetActive(false);
+    }
 
     void Awake()
     {
