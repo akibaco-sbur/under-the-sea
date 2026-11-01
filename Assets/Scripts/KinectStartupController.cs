@@ -13,6 +13,8 @@ public sealed class KinectStartupController : MonoBehaviour
     [SerializeField, Min(.3f), InspectorName("離席・認識喪失で終了するまでの秒数")] float seatLostSeconds = 10f;
     [SerializeField, Min(100f), InspectorName("立ち上がり判定の胸の上昇量（mm）")] float standingRiseMm = 300f;
     KinectSeatPresence seatPresence;
+    KinectSeatPresence reviewPresence;
+    float seatedChestY;
     AzureKinectSkeletonView skeleton;
     DiverFeedingFoodController feeding;
     KinectStartupRecognition recognition;
@@ -62,7 +64,7 @@ public sealed class KinectStartupController : MonoBehaviour
     }
     void Update()
     {
-        if(projectionContent && canvas)DiverProjectionLayout.Apply(projectionContent,canvas);
+        ApplyInstructionLayout();
         if (completed) { UpdateSeatPresence(); return; }
         if (booting) { UpdateRobotBoot(); return; }
         if (!feeding && Time.unscaledTime >= nextFind) { nextFind = Time.unscaledTime + 1f; FindInput(); }
@@ -135,6 +137,7 @@ public sealed class KinectStartupController : MonoBehaviour
                     if (body != null && body.Id == recognition.BodyId && KinectStartupBodyValidation.IsUpperBodyValid(body.Joints))
                     {
                         seatPresence = new KinectSeatPresence(seatLostSeconds, standingRiseMm);
+                        seatedChestY = body.Joints[2].Y;
                         seatPresence.Begin(body.Id, body.Joints[2].Y);
                         break;
                     }
@@ -190,6 +193,51 @@ public sealed class KinectStartupController : MonoBehaviour
         Debug.Log("[PlayerStart] Seated player left or tracking was lost. Ending experience.", this);
         DiverRetreatController.Request(gameObject.scene);
     }
+    internal bool ReviewPlayerAbsentFor(float seconds)
+    {
+        // Keyboard bypass has no sensor evidence of leaving the seat.
+        if (!bootUsesTracking) return false;
+        if (reviewPresence == null)
+        {
+            reviewPresence = new KinectSeatPresence(seconds, standingRiseMm);
+            reviewPresence.Begin(recognition.BodyId, seatedChestY);
+        }
+        var snapshot = skeleton && skeleton.isActiveAndEnabled ? skeleton.LatestSnapshot : null;
+        double age = snapshot == null ? double.PositiveInfinity :
+            (System.Diagnostics.Stopwatch.GetTimestamp()-snapshot.ReceivedTicks)/(double)System.Diagnostics.Stopwatch.Frequency;
+        AzureKinectCapture.Body player = null;
+        if (age >= 0 && age <= .35 && snapshot.Bodies != null)
+            foreach (var body in snapshot.Bodies)
+                if (body != null && body.Id == recognition.BodyId) { player = body; break; }
+        bool valid = player != null && KinectStartupBodyValidation.IsUpperBodyValid(player.Joints);
+        return reviewPresence.Tick(valid, player != null ? player.Id : 0, valid ? player.Joints[2].Y : 0, Time.unscaledTimeAsDouble);
+    }
+
+    internal void RestartRecognition()
+    {
+        DiverStartupGate.Begin(gameObject.scene);
+        completed = booting = bootUsesTracking = IsDiagnosticStart = false;
+        seatPresence = reviewPresence = null;
+        recognition.Reset();
+        trackingLostAt = -1f;
+        reportedBootUnavailable = false;
+        foreach (var pose in FindObjectsByType<KinectScoopPose>(FindObjectsSortMode.None))
+            if (pose.gameObject.scene == gameObject.scene) pose.ResetTracking();
+        progress.rectTransform.sizeDelta = new Vector2(0,6);
+        status.text = "椅子に座ってください";
+        substatus.text = "頭・肩・胸がセンサーに見えるようにしてください";
+        canvas.gameObject.SetActive(true);
+        ApplyInstructionLayout();
+    }
+
+    // Screen overlay after camera rendering; independent of the underwater UI safe area.
+    void ApplyInstructionLayout()
+    {
+        if (!projectionContent || !canvas) return;
+        var rect = ((RectTransform)canvas.transform).rect;
+        projectionContent.localScale = Vector3.one * Mathf.Min(rect.width/1920f, rect.height/1080f);
+    }
+
     void CancelRobotBoot()
     {
         if (robotHud) robotHud.CancelRobotBoot();
@@ -224,7 +272,7 @@ public sealed class KinectStartupController : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920, 1080); scaler.matchWidthOrHeight = .5f;
         var background = root.AddComponent<Image>(); background.color = Color.white; background.raycastTarget = false;
         projectionContent=Box("ProjectionContent",root.transform,Vector2.zero,new Vector2(1920,1080));
-        DiverProjectionLayout.Apply(projectionContent,canvas);
+        ApplyInstructionLayout();
         var center = Box("Content", projectionContent, new Vector2(0, 0), new Vector2(1200, 980));
         TextAt(center, "準備  /  プレイヤー認識", 20, 425, 45, new Color(.39f,.51f,.56f));
         TextAt(center, "はじめる前に", 46, 350, 80, new Color(.2f,.3f,.35f));

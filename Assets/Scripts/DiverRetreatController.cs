@@ -4,15 +4,19 @@ using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-/// <summary>Records only the active session; shutdown and map review never reload the scene or model.</summary>
+/// <summary>Records the active session; review returns to recognition without reloading the scene or model.</summary>
 [DefaultExecutionOrder(300)]
 public sealed class DiverRetreatController : MonoBehaviour
 {
     [SerializeField, Min(.5f)] float shutdownSeconds=2.4f;
     [SerializeField, Min(1f)] float replaySeconds=8f;
     [SerializeField, InspectorName("軌跡の範囲（省略時はSeabedを検索）")] Transform seaBed;
-    readonly DiverPathRecording path=new DiverPathRecording();
-    readonly WindowsSessionClock sessionClock=new WindowsSessionClock();
+    [SerializeField, Min(.3f), InspectorName("軌跡画面で認識喪失から最初へ戻る秒数")] float reviewLostSeconds=5f;
+    DiverPathRecording path=new DiverPathRecording();
+    WindowsSessionClock sessionClock=new WindowsSessionClock();
+    Vector3 initialPosition;
+    Quaternion initialRotation;
+    bool hasInitialPose;
     public double ExperienceSeconds => sessionClock.Elapsed(System.DateTimeOffset.Now).TotalSeconds;
     public double TravelDistance => path.Distance;
     DiverViewController diver;
@@ -65,6 +69,13 @@ public sealed class DiverRetreatController : MonoBehaviour
     void EnsureSessionStarted()
     {
         if(sessionClock.HasStarted)return;
+        if(!diver)diver=FindSource<DiverViewController>();
+        if(!hasInitialPose && diver && diver.BodyRoot)
+        {
+            initialPosition=diver.BodyRoot.position;
+            initialRotation=diver.BodyRoot.rotation;
+            hasInitialPose=true;
+        }
         sessionClock.Begin(System.DateTimeOffset.Now);
         DiverAudioController.BeginExperience(gameObject.scene);
         Debug.Log("[Session] Windows start time: "+sessionClock.StartedAt.ToString("O"),this);
@@ -84,6 +95,9 @@ public sealed class DiverRetreatController : MonoBehaviour
         }
         if(reviewing)
         {
+            var startup=FindSource<KinectStartupController>();
+            if(startup && startup.ReviewPlayerAbsentFor(reviewLostSeconds))
+            { ReturnToRecognition(); return; }
             if(Keyboard.current!=null && Keyboard.current.spaceKey.wasPressedThisFrame)replayTime=0;
             replayTime+=Time.unscaledDeltaTime;
             float p=Mathf.Clamp01(replayTime/Mathf.Max(1,replaySeconds));line.SetProgress(p);
@@ -116,14 +130,40 @@ public sealed class DiverRetreatController : MonoBehaviour
         DiverStartupGate.Begin(gameObject.scene);
         var movement=FindSource<DiverMovementController>();if(movement)movement.ResetMovement();
         feeding=FindSource<DiverFeedingFoodController>();if(feeding)feeding.CancelFeeding();
-        // Disabling uses the existing cancellation/disposal owner, never creates another model.
-        foreach(var voice in FindObjectsByType<VoskOfflineVoiceCommands>(FindObjectsSortMode.None))
-            if(voice.gameObject.scene==gameObject.scene)voice.enabled=false;
+        // The closed startup gate discards commands and pauses microphone submission.
+        // Keep the existing native owner alive for the next visitor; never reload the model here.
         hud=FindSource<DiverHudController>();
         BuildOverlay();
         StartCoroutine(ShutdownAndReview());
         Debug.Log("[Retreat] Shutdown started. Path samples="+path.Points.Count,this);
     }
+    [ContextMenu("軌跡画面から認識画面へ戻る（テスト）")]
+    public void ReturnToRecognition()
+    {
+        if(!reviewing)return;
+        var startup=FindSource<KinectStartupController>();
+        if(!startup)return;
+        DiverStartupGate.Begin(gameObject.scene);
+        StopAllCoroutines();
+        reviewing=retreating=false;
+        if(canvas){canvas.gameObject.SetActive(false);Destroy(canvas.gameObject);}
+        canvas=null;projectionContent=null;line=null;replayProgress=null;shade=null;status=null;
+        if(ownsFont && font)Destroy(font);
+        font=null;ownsFont=false;
+        path=new DiverPathRecording();
+        sessionClock=new WindowsSessionClock();
+        nextSample=replayTime=0f;
+        if(!feeding)feeding=FindSource<DiverFeedingFoodController>();
+        if(feeding)feeding.CancelFeeding();
+        var movement=FindSource<DiverMovementController>();
+        if(movement)movement.PrepareNextExperience();
+        if(diver && hasInitialPose)diver.PrepareNextExperience(initialPosition,initialRotation);
+        if(!hud)hud=FindSource<DiverHudController>();
+        if(hud)hud.PrepareNextExperience();
+        startup.RestartRecognition();
+        Debug.Log("[Retreat] Returned to seated recognition. Route and session reset; native model and Kinect capture reused.",this);
+    }
+
     void BuildOverlay()
     {
         var root=new GameObject("RetreatDisplay",typeof(RectTransform),typeof(Canvas),typeof(CanvasScaler));
