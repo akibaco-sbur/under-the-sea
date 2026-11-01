@@ -10,7 +10,7 @@ public sealed class KinectStartupController : MonoBehaviour
     [SerializeField, Min(.5f), InspectorName("認識を確認する秒数")] float stableSeconds = 3f;
     [SerializeField, Range(1f,8f), InspectorName("ロボット視界の起動秒数")] float robotBootSeconds = 3.2f;
     [SerializeField, InspectorName("使用フォント（省略可）")] Font displayFont;
-    [SerializeField, Min(.3f), InspectorName("離席・認識喪失で終了するまでの秒数")] float seatLostSeconds = 1.5f;
+    [SerializeField, Min(.3f), InspectorName("離席・認識喪失で終了するまでの秒数")] float seatLostSeconds = 10f;
     [SerializeField, Min(100f), InspectorName("立ち上がり判定の胸の上昇量（mm）")] float standingRiseMm = 300f;
     KinectSeatPresence seatPresence;
     AzureKinectSkeletonView skeleton;
