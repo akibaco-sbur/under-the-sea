@@ -4,7 +4,7 @@ using UnityEngine.UI;
 internal static class DiverRouteReviewSkin
 {
     static readonly Color cyan=new Color(.2f,.92f,1,1);
-    internal static RectTransform Build(Transform canvas,Font font,WindowsSessionClock clock,double distance,int samples,Bounds bounds,float gridStep)
+    internal static RectTransform Build(Transform canvas,Font font,WindowsSessionClock clock,double distance,int samples,Bounds bounds,float gridStep,int feedingCount=0)
     {
         var frame=Rect("ArchiveFrame",canvas,new Vector2(.018f,.025f),new Vector2(.982f,.975f));
         var graphic=frame.gameObject.AddComponent<DiverRobotFrameGraphic>();graphic.color=new Color(.12f,.75f,.85f,.5f);graphic.raycastTarget=false;
@@ -21,7 +21,7 @@ internal static class DiverRouteReviewSkin
         Text(elapsed,font,"体験時間\n終了時刻 − 開始時刻",new Vector2(.06f,.06f),new Vector2(.94f,.35f),17,new Color(.48f,.68f,.73f));
         var metrics=Panel(canvas,"NavigationRecord",new Vector2(.76f,.55f),new Vector2(.955f,.83f));
         Text(metrics,font,"03  //  NAVIGATION DATA",new Vector2(.06f,.79f),new Vector2(.94f,.96f),17,cyan);
-        Text(metrics,font,$"移動距離\n{distance:0.0} m\n\n記録点数   {samples:N0}",new Vector2(.06f,.07f),new Vector2(.94f,.76f),24,new Color(.82f,.94f,.97f));
+        Text(metrics,font,$"移動距離\n{distance:0.0} m\n\n記録点数   {samples:N0}\n給餌成功   {feedingCount} 回",new Vector2(.06f,.07f),new Vector2(.94f,.76f),24,new Color(.82f,.94f,.97f));
         var survey=Panel(canvas,"SurveyExtent",new Vector2(.76f,.25f),new Vector2(.955f,.51f));
         Text(survey,font,"04  //  SURVEY GRID",new Vector2(.06f,.79f),new Vector2(.94f,.96f),17,cyan);
         Text(survey,font,$"SeaBed全体\n{bounds.size.x:0.#} × {bounds.size.z:0.#} m\n1マス  {gridStep:0.##} m\n\nN ↑  /  北が上",new Vector2(.06f,.07f),new Vector2(.94f,.76f),20,new Color(.82f,.94f,.97f));

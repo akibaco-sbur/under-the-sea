@@ -11,19 +11,22 @@ internal sealed class DiverBorderInterference : IDisposable
     readonly List<RectTransform> gauges=new List<RectTransform>();
     readonly List<Vector2> home=new List<Vector2>();
     readonly GameObject root;
+    readonly GameObject popupLayer;
     readonly GameObject[] popups=new GameObject[BorderInterferenceState.MaximumPopups];
     readonly System.Random placement=new System.Random(Guid.NewGuid().GetHashCode());
     readonly Material noiseMaterial;
     readonly Font font;
     readonly Scene scene;
-    public DiverBorderInterference(Transform parent,Font font)
+    public DiverBorderInterference(Transform parent,Font font,Transform popupParent=null)
     {
         this.font=font;
         scene=parent.gameObject.scene;
         var rect=Rect("BorderSignalInterference",parent,Vector2.zero,Vector2.one,Vector2.zero,Vector2.zero,new Vector2(.5f,.5f));
         root=rect.gameObject;
         var group=root.AddComponent<CanvasGroup>();group.interactable=false;group.blocksRaycasts=false;
-        for(int i=0;i<popups.Length;i++)popups[i]=BuildPopup(rect,i,NextPosition());
+        var popupRect=Rect("ProjectedPopupLayer",popupParent?popupParent:rect,Vector2.zero,Vector2.one,Vector2.zero,Vector2.zero,new Vector2(.5f,.5f));
+        popupLayer=popupRect.gameObject;
+        for(int i=0;i<popups.Length;i++)popups[i]=BuildPopup(popupRect,i,NextPosition());
         var shader=Resources.Load<Shader>("Shaders/DiverBorderNoise");
         if(shader)
         {
@@ -42,6 +45,7 @@ internal sealed class DiverBorderInterference : IDisposable
         state.Tick(target,dt);
         DiverAudioController.SetNoiseLevel(scene,state.Strength);
         root.SetActive(state.Strength>.001f);
+        popupLayer.SetActive(state.Strength>.001f);
         if(noiseMaterial){noiseMaterial.SetFloat("_Strength",state.Strength);noiseMaterial.SetFloat("_Phase",state.NoiseSeed);noiseMaterial.SetFloat("_Burst",state.NoiseBurst);}
         for(int i=0;i<popups.Length;i++)
         {
@@ -64,11 +68,11 @@ internal sealed class DiverBorderInterference : IDisposable
     }
     public void Reset()
     {
-        state.Reset();if(root)root.SetActive(false);
+        state.Reset();if(root)root.SetActive(false);if(popupLayer)popupLayer.SetActive(false);
         DiverAudioController.SetNoiseLevel(scene,0);
         for(int i=0;i<gauges.Count;i++)if(gauges[i])gauges[i].anchoredPosition=home[i];
     }
-    public void Dispose(){Reset();if(noiseMaterial)UnityEngine.Object.Destroy(noiseMaterial);if(root)UnityEngine.Object.Destroy(root);}
+    public void Dispose(){Reset();if(noiseMaterial)UnityEngine.Object.Destroy(noiseMaterial);if(popupLayer)UnityEngine.Object.Destroy(popupLayer);if(root)UnityEngine.Object.Destroy(root);}
     GameObject BuildPopup(Transform parent,int index,Vector2 position)
     {
         var box=Rect("BoundaryError"+index,parent,position,position,Vector2.zero,new Vector2(370,148),new Vector2(0,1));

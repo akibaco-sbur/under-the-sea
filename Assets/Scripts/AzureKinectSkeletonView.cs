@@ -24,6 +24,7 @@ public sealed class AzureKinectSkeletonView : MonoBehaviour
     public ulong DeviceTimestampMicroseconds => capture?.Latest?.TimestampMicroseconds ?? 0;
     public int BodyCount { get { var snapshot = capture?.Latest; return IsFresh(snapshot) ? snapshot.Bodies.Length : 0; } }
     public string TrackingStatus => capture?.Status ?? "Stopped";
+    internal AzureKinectCapture.Snapshot DiagnosticSnapshot=>capture?.Latest;
     internal string RgbStatus => capture?.RgbStatus ?? "RGB recognition stopped";
     internal MediaPipeHandWorker.Result LatestRgb => capture?.LatestRgb;
 

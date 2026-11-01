@@ -17,6 +17,18 @@ public sealed class KinectStartupController : MonoBehaviour
     DiverFeedingFoodController feeding;
     KinectStartupRecognition recognition;
     Canvas canvas;
+    RectTransform projectionContent;
+    public float RecognitionProgress=>recognition!=null?recognition.Progress:0;
+    public uint RecognizedBodyId=>recognition!=null?recognition.BodyId:0;
+    public bool HasExperienceStarted=>completed;
+    public bool IsDiagnosticStart {get;private set;}
+    public void BeginDiagnosticExperience()
+    {
+        if(!DiverKinectDiagnostics.IsRecordingScene(gameObject.scene) || completed || booting)return;
+        IsDiagnosticStart=true;
+        Debug.Log("[PlayerStart] Diagnostic-only recognition bypass. Existing Kinect capture remains active.",this);
+        BeginGame(false);
+    }
     Text status, substatus, testHint;
     Image progress;
     Font font;
@@ -50,6 +62,7 @@ public sealed class KinectStartupController : MonoBehaviour
     }
     void Update()
     {
+        if(projectionContent && canvas)DiverProjectionLayout.Apply(projectionContent,canvas);
         if (completed) { UpdateSeatPresence(); return; }
         if (booting) { UpdateRobotBoot(); return; }
         if (!feeding && Time.unscaledTime >= nextFind) { nextFind = Time.unscaledTime + 1f; FindInput(); }
@@ -132,6 +145,7 @@ public sealed class KinectStartupController : MonoBehaviour
         robotHud.BeginRobotBoot(robotBootSeconds);
         canvas.gameObject.SetActive(false);
         Debug.Log(tracked ? "[PlayerStart] Player recognized. Robot optical display is starting; controls remain blocked." :
+            IsDiagnosticStart ? "[PlayerStart] Diagnostic bypass. Robot display is starting while Kinect capture continues." :
             "[PlayerStart] Explicit keyboard-test bypass. Starting robot display without Kinect recognition.",this);
     }
     void UpdateRobotBoot()
@@ -209,7 +223,9 @@ public sealed class KinectStartupController : MonoBehaviour
         var scaler = root.GetComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080); scaler.matchWidthOrHeight = .5f;
         var background = root.AddComponent<Image>(); background.color = Color.white; background.raycastTarget = false;
-        var center = Box("Content", root.transform, new Vector2(0, 0), new Vector2(1200, 980));
+        projectionContent=Box("ProjectionContent",root.transform,Vector2.zero,new Vector2(1920,1080));
+        DiverProjectionLayout.Apply(projectionContent,canvas);
+        var center = Box("Content", projectionContent, new Vector2(0, 0), new Vector2(1200, 980));
         TextAt(center, "準備  /  プレイヤー認識", 20, 425, 45, new Color(.39f,.51f,.56f));
         TextAt(center, "はじめる前に", 46, 350, 80, new Color(.2f,.3f,.35f));
         TextAt(center, "椅子に座って、準備しましょう", 26, 275, 55, new Color(.39f,.46f,.49f));
