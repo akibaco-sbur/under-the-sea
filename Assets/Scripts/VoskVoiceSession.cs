@@ -21,6 +21,12 @@ internal sealed class VoskVoiceSession
     int audioCount, started;
     volatile bool ready, finished;
     string error;
+    volatile bool diagnosticsEnabled;
+    long processedBytes;
+    string partialJson = "";
+    internal bool DiagnosticsEnabled { set => diagnosticsEnabled=value; }
+    internal long ProcessedBytes => Interlocked.Read(ref processedBytes);
+    internal string PartialJson => Volatile.Read(ref partialJson);
     internal bool Ready => ready && !cancellation.IsCancellationRequested;
     internal bool Finished => finished;
     internal bool HasAudioCapacity => Ready && Volatile.Read(ref audioCount) < MaxAudioChunks;
@@ -153,13 +159,20 @@ internal sealed class VoskVoiceSession
                 if (Model.getCPtr(model).Handle == IntPtr.Zero) throw new InvalidOperationException("Vosk returned a null model handle.");
                 // Native loading cannot be interrupted. Check stop immediately upon return.
                 token.ThrowIfCancellationRequested();
-                recognizer = new VoskRecognizer(model, sampleRate, grammar);
+                bool dynamicGraph = !File.Exists(Path.Combine(path,"graph","HCLG.fst")) &&
+                    !File.Exists(Path.Combine(path,"HCLG.fst")) &&
+                    (File.Exists(Path.Combine(path,"graph","HCLr.fst")) || File.Exists(Path.Combine(path,"HCLr.fst")));
+                recognizer = dynamicGraph ? new VoskRecognizer(model, sampleRate, grammar) : new VoskRecognizer(model, sampleRate);
+                Report(dynamicGraph ? "Recognition mode: dynamic grammar (configured phrases)." :
+                    "Recognition mode: model default graph. This model does not apply the configured phrase grammar; commands are matched after transcription.");
                     if (VoskRecognizer.getCPtr(recognizer).Handle == IntPtr.Zero)
                         throw new InvalidOperationException("Vosk returned a null recognizer handle.");
                     token.ThrowIfCancellationRequested();
                     recognizer.SetWords(false);
                     ready = true;
                     Report("Model loaded; recognizer ready.");
+                    var diagnosticTimer=System.Diagnostics.Stopwatch.StartNew();
+                    double nextPartial=0;
                     while (!token.IsCancellationRequested)
                     {
                         if (!audio.TryDequeue(out byte[] pcm))
@@ -168,11 +181,20 @@ internal sealed class VoskVoiceSession
                             continue;
                         }
                         Interlocked.Decrement(ref audioCount);
-                        if (recognizer.AcceptWaveform(pcm, pcm.Length))
+                        bool finalized=recognizer.AcceptWaveform(pcm, pcm.Length);
+                        Interlocked.Add(ref processedBytes,pcm.Length);
+                        if (finalized)
                         {
                             string result = recognizer.Result();
+                            Volatile.Write(ref partialJson,"");
                             if (!token.IsCancellationRequested && results.Count < MaxResults && result != null && result.Length <= 16384)
                                 results.Enqueue(result);
+                        }
+                        else if(diagnosticsEnabled && diagnosticTimer.Elapsed.TotalSeconds>=nextPartial)
+                        {
+                            nextPartial=diagnosticTimer.Elapsed.TotalSeconds+.5;
+                            string partial=recognizer.PartialResult();
+                            Volatile.Write(ref partialJson,partial != null && partial.Length<=2048 ? partial : "");
                         }
                     }
                     // Do not run FinalResult on an expired session.

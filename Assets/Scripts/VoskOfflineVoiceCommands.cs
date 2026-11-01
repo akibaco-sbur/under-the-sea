@@ -29,6 +29,13 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
     [SerializeField, TextArea(2,6), InspectorName("検出マイク一覧（確認用）")] private string availableMicrophones;
     [SerializeField, InspectorName("選択されたマイク（確認用）")] private string selectedMicrophoneName;
     private float microphoneStartedAt;
+    [Header("Voice diagnostics")]
+    [SerializeField, InspectorName("音声入力の診断ログ")] private bool voiceDiagnostics = true;
+    [SerializeField, TextArea(2,8), InspectorName("音声入力の状態（確認用）")] private string voiceInputStatus;
+    [SerializeField, TextArea(2,6), InspectorName("最後の認識JSON（確認用）")] private string lastRecognitionJson;
+    private readonly VoskAudioProbe audioProbe = new VoskAudioProbe();
+    private float nextVoiceDiagnostic;
+    private long lastProcessedBytes;
 
     [Header("Kinect gate")]
     [SerializeField] private bool palmUpRequiredForFeeding = true;
@@ -108,6 +115,10 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         loggedFirstAudioChunk = false;
         nextStorageCheck = 0f;
         nextAudioWarning = 0f;
+        nextVoiceDiagnostic = 0f;
+        lastProcessedBytes = 0;
+        audioProbe.Reset();
+        lastRecognitionJson = "";
         string[] devices=Microphone.devices;
         availableMicrophones=devices!=null?string.Join("\n",devices):"";
         selectedMicrophoneName="";
@@ -126,6 +137,7 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
         {
             session = new VoskVoiceSession(modelFolderName, Application.streamingAssetsPath,
                 Application.persistentDataPath, BuildGrammarJson(), OutputRate);
+            session.DiagnosticsEnabled = voiceDiagnostics;
             session.Start();
         }
         catch (Exception exception)
@@ -168,13 +180,14 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
             enabled = false;
             yield break;
         }
-        Debug.Log("[Vosk] Recognizer ready. Grammar: " + BuildGrammarJson(), this);
+        Debug.Log("[Vosk] Recognizer ready. Command phrases (not a vocabulary update to the model): " + BuildGrammarJson(), this);
         startup = null;
     }
 
     private void DrainSessionMessages()
     {
         if (session == null) return;
+        session.DiagnosticsEnabled = voiceDiagnostics;
         for (int i = 0; i < 8 && session.TryReadMessage(out string message); i++)
         {
             if (message.StartsWith("WARNING: ", StringComparison.Ordinal))
@@ -225,14 +238,39 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
             if (waitingForPlayer) microphoneCursor = Mathf.Max(0, Microphone.GetPosition(microphoneDevice));
             else CaptureAvailableAudio();
         }
+        UpdateVoiceDiagnostics(waitingForPlayer);
         // A command may disable/destroy this component. Do not dispatch the rest afterward.
         for (int i = 0; i < 8 && isActiveAndEnabled && session.TryReadResult(out string resultJson); i++)
         {
+            lastRecognitionJson = resultJson;
             if (waitingForPlayer) continue;
             string phrase = ReadText(resultJson);
             Debug.Log($"[Vosk] Final result: json={resultJson}, text=\"{phrase}\", normalized=\"{Normalize(phrase)}\"", this);
             if (!string.IsNullOrEmpty(phrase)) DispatchPhrase(phrase);
         }
+    }
+
+    private void UpdateVoiceDiagnostics(bool waiting)
+    {
+        if(!voiceDiagnostics || Time.realtimeSinceStartup < nextVoiceDiagnostic)return;
+        nextVoiceDiagnostic=Time.realtimeSinceStartup+2f;
+        long processed=session.ProcessedBytes;
+        long delta=processed-lastProcessedBytes;
+        lastProcessedBytes=processed;
+        voiceInputStatus="device="+microphoneDevice+", gate="+(waiting?"WAITING (commands paused)":"OPEN")+
+            ", model="+(session.Ready?"READY":"LOADING")+", position="+
+            (microphoneClip ? Microphone.GetPosition(microphoneDevice).ToString() : "not started")+
+            "; "+audioProbe.Summary()+"; nativeProcessed="+processed+" bytes (delta="+delta+")"+
+            "; partial="+session.PartialJson;
+        Debug.Log("[Vosk][Input] "+voiceInputStatus,this);
+        if(!waiting && session.Ready && audioProbe.HasSamples)
+        {
+            if(audioProbe.RawDb < -65)
+                Debug.LogWarning("[Vosk][Input] Selected microphone signal is very low. Check USB input level, mute and Windows microphone permission. This is a diagnostic only; audio was not filtered.",this);
+            else if(audioProbe.RawDb-audioProbe.MonoDb > 18)
+                Debug.LogWarning("[Vosk][Input] Signal drops strongly when channels are mixed to mono. Check channel configuration/polarity. Audio conversion has not been changed.",this);
+        }
+        audioProbe.Reset();
     }
 
     /// <summary>Call from the Kinect hand tracker whenever palm orientation changes.</summary>
@@ -300,6 +338,7 @@ public sealed class VoskOfflineVoiceCommands : MonoBehaviour
                 return;
             }
             byte[] pcm = ConvertToPcm16Mono(microphoneBuffer, microphoneClip.channels, microphoneClip.frequency);
+            if(voiceDiagnostics)audioProbe.Observe(microphoneBuffer,microphoneClip.channels);
             if (session.TryEnqueue(pcm) && !loggedFirstAudioChunk)
             {
                 loggedFirstAudioChunk = true;
